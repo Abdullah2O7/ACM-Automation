@@ -9,11 +9,10 @@ import type { PortalName } from './portals';
  * accounts of your project - the name is only a lookup key, nothing else depends on it.
  */
 const rolePortals = {
-  // CMS accounts, one per permission level in the user stories. Only the public portal has no role: it needs no sign-in.
-  CMS_CONTENT: 'cms',
-  // A second back-office account: Claude's own verification runs sign in with it (CMS_ACCOUNT=CMS_SECOND), so they never
-  // sign the dashboard's runs out - the back office keeps one session per account.
-  CMS_SECOND: 'cms',
+  ADMIN: 'acm',
+  USER: 'acm',
+  CMS_CONTENT: 'acm',
+  CMS_SECOND: 'acm',
 } as const satisfies Record<string, PortalName>;
 
 export type RoleName = keyof typeof rolePortals;
