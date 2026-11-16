@@ -54,6 +54,18 @@ const testStepsBudget = 300_000;
 export const testTimeout = loginTimeBudget + testStepsBudget;
 
 /**
+ * The ACM portal (https://test-acm.3segypt.com) is shared by the team, and slow when several runs use it at once: a
+ * screen showed its loading state ("جارٍ التحميل…") for over 15 s with two workers. These waits are for the application,
+ * not for the test: a case that passes is not slowed by them.
+ */
+export const acmTimeouts = {
+  /** A screen until its first own control has rendered. */
+  pageLoad: 60_000,
+  /** One call of the ACM API (sign-in, preparation, clean-up). */
+  apiCall: 60_000,
+} as const;
+
+/**
  * The back office (Umbraco) is slow, and slower still when several cases use it at once: a page can take a minute to render
  * and a save or publish half a minute to be answered. These waits are for the application, not for the test: a case that
  * passes is not slowed by them.

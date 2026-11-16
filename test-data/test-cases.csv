@@ -1,0 +1,641 @@
+TC_No,TC,notes
+TC001,"@P1
+Scenario: Verify that an active user can log in with valid credentials
+Given the user is on the login page
+When the user enters a valid 'اسم المستخدم' and 'كلمة المرور'
+And clicks 'تسجيل الدخول'
+Then the user is redirected to the dashboard
+And the user name and role appear in the header
+#التحقق من تسجيل الدخول بنجاح ببيانات صحيحة لمستخدم مفعّل",
+TC002,"@P4
+Scenario: Verify that switching language between Arabic and English updates the UI and layout direction
+Given the UI is in Arabic (default)
+When the user clicks 'تغيير اللغة'
+Then labels are displayed in English with LTR layout
+And switching back restores Arabic with RTL layout
+#التحقق من تبديل اللغة بين العربية والإنجليزية واتجاه الصفحة",
+TC003,"@P2
+Scenario: Verify that the admin can add a lookup value and it appears in related dropdowns
+Given the admin is on 'أكواد النظام'
+When the admin selects a 'نوع الكود' ('الأقسام', 'الأولوية', 'نوع الجهة', 'نوع الوثيقة')
+And clicks 'إضافة' and fills 'الكود', 'العربية', 'الإنجليزية' and 'الفرنسية'
+And clicks 'حفظ الجدول'
+Then the value is saved
+And appears in the related dropdowns across the system
+#التحقق من إضافة قيمة في أكواد النظام وظهورها في القوائم المرتبطة",
+TC004,"@P3
+Scenario: Verify that a deactivated lookup value no longer appears in dropdowns
+Given a lookup value is active
+When the admin deactivates it and saves
+Then it is no longer available in new records
+And existing records keep their value
+#التحقق من إخفاء قيمة الكود المعطّلة من القوائم مع الحفاظ على السجلات القديمة",
+TC005,"@P4
+Scenario: Verify that lookup values display according to their sort order and duplicate codes are rejected
+Given lookup values exist
+When the admin changes the order and saves
+Then dropdowns display values in the new order
+When the admin adds a value with an existing code
+Then a duplicate validation message is shown
+#التحقق من ترتيب قيم الأكواد ورفض الكود المكرر",
+TC006,"@P1
+Scenario: Verify that the admin can create a role template with selected permissions
+Given the admin is on 'قوالب الأدوار'
+When the admin clicks 'قالب جديد' and fills 'الكود', 'الاسم' and selected 'الصلاحيات'
+Then it appears in the list with the correct permissions count and 'مفعّل' status
+#التحقق من إنشاء قالب دور بصلاحيات محددة",
+TC007,"@P3
+Scenario: Verify that entity identity and logo are saved and printed on labels and cover
+Given the admin is on 'الإعدادات' > 'هوية الجهة'
+When the admin saves 'اسم الجهة', 'الاسم المختصر', 'العنوان' and uploads 'الشعار' (PNG/JPEG/GIF/BMP ≤ 1 MB)
+Then the short name is printed on labels
+And the logo appears on the correspondence cover
+#التحقق من حفظ هوية الجهة والشعار وظهورهم في الملصقات وغلاف المراسلة",
+TC008,"@P4
+Scenario: Verify that uploading a logo larger than 1 MB or unsupported type is rejected
+Given the admin is on 'الإعدادات' > 'الشعار'
+When the admin uploads a file larger than 1 MB or of an unsupported type
+Then the upload is rejected with a validation message
+#التحقق من رفض شعار أكبر من 1 ميجابايت أو بصيغة غير مدعومة",
+TC009,"@P1
+Scenario: Verify that the admin can add an IMAP mailbox and the service connects
+Given the admin is on 'الإعدادات' > 'استقبال البريد'
+When the admin clicks 'إضافة صندوق بريد' and fills server, port, SSL and 'كلمة مرور التطبيق'
+Then the mailbox is saved with status 'يستقبل'
+And the password is never displayed again, only 'saved' status
+#التحقق من إضافة صندوق بريد IMAP واتصاله وعدم عرض كلمة المرور",
+TC010,"@P1
+Scenario: Verify that SMTP settings can be saved and a test email is delivered
+Given the admin is on 'الإعدادات' > 'البريد الخارجي (SMTP)'
+When the admin enables 'تفعيل الإرسال الخارجي' and fills 'خادم SMTP', 'المنفذ', 'وضع التشفير', 'عنوان المرسل', 'اسم المرسل', 'مستخدم SMTP' and 'كلمة المرور'
+And clicks 'حفظ' then 'إرسال بريد اختبار'
+Then the test email is received successfully
+#التحقق من حفظ إعدادات SMTP وإرسال بريد اختبار",
+TC011,"@P1
+Scenario: Verify that the admin can create an internal main entity with three sub-entities
+Given the admin is on 'الجهات'
+When the admin creates the internal main entity 'النادي الأهلي'
+And creates the sub-entities 'إدارة الكرة', 'إدارة العضويات' and 'الإدارة المالية' under it
+Then the tree shows 'النادي الأهلي' with the 3 sub-entities nested under it
+And 'نوع الجهة' is internal
+#التحقق من إنشاء جهة رئيسية داخلية (النادي الأهلي) وتحتها 3 جهات فرعية",
+TC012,"@P1
+Scenario: Verify that persons can be registered under the main entity and each sub-entity with a unique email
+Given 'النادي الأهلي' and its 3 sub-entities exist
+When the admin clicks 'شخص جديد' and adds 'محمد عادل' under 'النادي الأهلي'
+And adds 'كريم حسن' and 'عمرو فتحي' under 'إدارة الكرة'
+And adds 'منى سعيد' under 'إدارة العضويات' and 'هشام رضا' under 'الإدارة المالية'
+And each person has a unique email
+Then each person appears under the correct entity in the tree
+#التحقق من تسجيل أشخاص تحت النادي الأهلي وكل إدارة فرعية ببريد مختلف لكل شخص",
+TC013,"@P1
+Scenario: Verify that an external entity can be created with a person
+Given the admin is on 'الجهات'
+When the admin creates the external entity 'الاتحاد المصري لكرة القدم'
+And adds the person 'مسؤول المراسلات' with email 'external.entity@example.com'
+Then the entity appears with 'نوع الجهة' external
+And it can be selected as 'الجهة المستقبِلة' for outgoing correspondence
+#التحقق من إنشاء الجهة الخارجية الاتحاد المصري لكرة القدم وإضافة شخص ببريد إلكتروني عليها",
+TC014,"@P3
+Scenario: Verify that an entity or person can be edited and deleted
+Given an entity or person is selected
+When the user edits its data and saves
+Then the changes are displayed
+When the user deletes a record not used in correspondence
+Then it is removed from the tree
+#التحقق من تعديل وحذف جهة أو شخص",
+TC016,"@P4
+Scenario: Verify that searching entities and persons filters the tree
+Given the entities tree contains many records
+When the user searches by name
+Then only matching entities and persons are displayed
+#التحقق من البحث في الجهات والأشخاص",
+TC017,"@P1
+Scenario: Verify that the admin can create a main archive folder with sub-folders for the entity
+Given the admin is on 'الأرشيف'
+When the admin clicks 'مجلد رئيسي جديد' and creates 'أرشيف النادي الأهلي 2026'
+And creates the sub-folders 'أرشيف إدارة الكرة', 'أرشيف إدارة العضويات' and 'أرشيف الإدارة المالية' under it
+Then the hierarchy shows 'أرشيف النادي الأهلي 2026' with the 3 sub-folders nested under it
+And each folder shows a documents count of 0
+#التحقق من إنشاء مجلد أرشيف رئيسي للنادي الأهلي وتحته مجلدات فرعية لكل إدارة",
+TC018,"@P3
+Scenario: Verify that archive folder management allows renaming and deleting folders
+Given 'أرشيف إدارة العضويات' exists under 'أرشيف النادي الأهلي 2026'
+When the user renames it to 'أرشيف شؤون العضويات'
+Then the new name is shown in the hierarchy
+When the user deletes the empty folder 'مجلد مؤقت'
+Then it is removed
+#التحقق من إعادة تسمية مجلد أرشيف العضويات وحذف مجلد فارغ",
+TC019,"@P1
+Scenario: Verify that the admin can create one archive template with mandatory and optional index fields of every data type
+Given the folders 'أرشيف إدارة الكرة', 'أرشيف إدارة العضويات' and 'أرشيف الإدارة المالية' exist
+When the admin is on 'القوالب' and creates 'قالب أرشفة مراسلات النادي الأهلي'
+And links it to the 3 sub-folders under 'أرشيف النادي الأهلي 2026'
+And adds the mandatory index fields 'رقم خطاب الجهة' (نص), 'القيمة المالية' (رقم), 'تاريخ الخطاب' (تاريخ), 'تصنيف المراسلة' (قائمة: طلب / إخطار / مطالبة) and 'يتطلب رد' (نعم/لا)
+And adds the optional index fields 'ملاحظات الأرشفة' (نص), 'عدد الصفحات' (رقم), 'تاريخ المتابعة' (تاريخ), 'درجة الأهمية' (قائمة: عادي / مهم / عاجل) and 'تم الرد' (نعم/لا)
+And saves
+Then the template card shows 10 index fields and 3 folders
+And each field keeps its data type and its mandatory / optional setting when the template is reopened
+And the template is available when archiving into any of the 3 sub-folders
+#التحقق من إنشاء قالب أرشفة واحد للنادي الأهلي فيه حقل إلزامي وحقل اختياري لكل نوع بيانات",
+TC020,"@P3
+Scenario: Verify that the admin can edit and delete an archive template
+Given 'قالب أرشفة مراسلات النادي الأهلي' exists
+When the admin adds the optional index field 'رقم الفاتورة' (نص) and saves
+Then the template card shows 11 index fields and the new field appears in new archives
+And documents archived before the change keep their values
+When the admin deletes the unused template 'قالب أرشفة مؤقت'
+Then it is removed from the list
+#التحقق من تعديل قالب أرشفة النادي الأهلي وحذف قالب غير مستخدم",
+TC021,"@P1
+Scenario: Verify that a system user is created for each person by selecting the person from the persons list
+Given the 5 persons exist under 'النادي الأهلي' and its sub-entities
+When the admin is on 'الإدارة' > 'المستخدمون' and clicks 'مستخدم جديد'
+And searches the persons list for 'محمد عادل' and selects him
+And fills 'اسم المستخدم' and the role and saves
+And repeats the same for 'كريم حسن', 'عمرو فتحي', 'منى سعيد' and 'هشام رضا'
+Then each user appears in 'المستخدمون' list as 'مفعّل' with the selected person's name and email
+And each user is linked to the correct person and entity
+#التحقق من إنشاء يوزر لكل شخص من أشخاص النادي الأهلي باختياره من قائمة الأشخاص وربطه بجهته",
+TC022,"@P1
+Scenario: Verify that OTP is disabled automatically for users created by the admin
+Given the admin creates the users of 'محمد عادل', 'كريم حسن', 'عمرو فتحي', 'منى سعيد' and 'هشام رضا'
+When each user creation is saved
+Then OTP is disabled for the user by default
+And the admin is not asked for any OTP during creation
+When any of the new users logs in
+Then no OTP is requested
+#التحقق من تعطيل الـ OTP تلقائياً ليوزرز النادي الأهلي وعدم طلبه أثناء الإنشاء أو الدخول",
+TC023,"@P2
+Scenario: Verify that a duplicate username or a second user for the same person is rejected
+Given a user already exists for the person 'كريم حسن'
+When the admin clicks 'مستخدم جديد' and selects 'كريم حسن' again
+Or enters an 'اسم المستخدم' that already exists for another user
+And saves
+Then a duplicate validation message is displayed, or 'كريم حسن' is not available for selection
+And no new user is created
+#التحقق من رفض تكرار اسم المستخدم أو إنشاء يوزر ثاني لنفس الشخص",
+TC024,"@P2
+Scenario: Verify that the admin can deactivate and reactivate a user
+Given an active user exists
+When the admin deactivates the user
+Then the status shows 'معطّل' and the user cannot log in
+When the admin reactivates the user
+Then the user can log in again
+#التحقق من تعطيل وإعادة تفعيل المستخدم",
+TC025,"@P4
+Scenario: Verify that users list search and status filter work
+Given users with different statuses exist
+When the admin searches by 'اسم المستخدم', 'الاسم الكامل' or 'البريد الإلكتروني'
+And filters by 'المفعّل وغير المفعّل'
+Then only matching users are shown
+#التحقق من البحث والفلترة في قائمة المستخدمين",
+TC026,"@P3
+Scenario: Verify that a disabled role cannot be assigned to users
+Given a role template is disabled
+When the admin creates or edits a user
+Then the disabled role is not available for selection
+#التحقق من عدم إمكانية إسناد دور معطّل للمستخدمين",
+TC027,"@P1
+Scenario: Verify that a user's access follows the permissions of the assigned role
+Given a user is assigned the 'مشغل' role
+When the user logs in
+Then operational modules are available
+And 'الإدارة' screens are hidden and blocked by direct URL
+#التحقق من تطبيق صلاحيات الدور ومنع المشغّل من الوصول لشاشات الإدارة",
+TC028,"@P2
+Scenario: Verify that a user flagged 'يجب تغيير كلمة المرور' is forced to change it on first login
+Given a new user account is flagged 'يجب تغيير كلمة المرور'
+When the user logs in for the first time
+Then the system forces the user to set a new password before accessing the system
+#التحقق من إجبار المستخدم الجديد على تغيير كلمة المرور عند أول دخول",
+TC029,"@P2
+Scenario: Verify that login fails with an invalid password
+Given the user is on the login page
+When the user enters a valid 'اسم المستخدم' and a wrong 'كلمة المرور'
+And clicks 'تسجيل الدخول'
+Then an invalid credentials error message is displayed
+And the user stays on the login page
+#التحقق من رفض تسجيل الدخول بكلمة مرور خاطئة",
+TC030,"@P2
+Scenario: Verify that the user can log out and protected pages are no longer accessible
+Given the user is logged in
+When the user logs out from the 'الحساب' menu
+Then the user is redirected to the login page
+And opening any system URL redirects back to login
+#التحقق من تسجيل الخروج وعدم إمكانية الوصول للصفحات بعده",
+TC031,"@P1
+Scenario: Verify that the user can register an incoming letter with all mandatory fields
+Given the user is on the correspondence creation page ('الصادر و الوارد' > 'إنشاء')
+When the user selects 'الاتجاه' = 'وارد' and 'النوع' = 'خطاب'
+And fills 'تاريخ المراسلة', 'الجهة المستقبِلة' = 'النادي الأهلي', 'الموضوع' = 'إخطار بمواعيد مباريات الدور الأول' and 'النص'
+And sets the sender as 'الاتحاد المصري لكرة القدم'
+And clicks 'إرسال'
+Then the record is saved with an auto reference number in format YYYY/N/I
+And it appears in the 'الوارد' folder
+#التحقق من تسجيل خطاب وارد من الاتحاد المصري لكرة القدم للنادي الأهلي وتوليد الرقم المرجعي بصيغة الوارد",
+TC032,"@P1
+Scenario: Verify that the user can create and send an outgoing fax correspondence
+Given the user is on the correspondence creation page ('الصادر و الوارد' > 'إنشاء')
+When the user selects 'الاتجاه' = 'صادر' and 'النوع' = 'فاكس'
+And fills 'الموضوع' = 'تأكيد حضور اجتماع لجنة المسابقات', 'النص' and the other mandatory fields
+And selects 'الجهة المستقبِلة' = 'الاتحاد المصري لكرة القدم'
+And clicks 'إرسال'
+Then the record gets a reference number in format YYYY/N/O
+And it appears in the 'الصادر' folder
+#التحقق من إنشاء وإرسال فاكس صادر للاتحاد المصري لكرة القدم وتوليد الرقم المرجعي بصيغة الصادر",
+TC033,"@P2
+Scenario: Verify that mandatory field validation is shown when saving empty correspondence
+Given the user is on the correspondence creation page ('الصادر و الوارد' > 'إنشاء')
+When the user clicks 'إرسال' without filling 'تاريخ المراسلة', 'الجهة المستقبِلة', 'الموضوع' and 'النص'
+Then 'حقل مطلوب' is displayed under each mandatory field
+And the record is not saved
+#التحقق من ظهور رسائل الحقول الإلزامية عند الإرسال بدون بيانات",
+TC034,"@P2
+Scenario: Verify that a correspondence saved as draft remains editable
+Given the user filled the correspondence form
+When the user clicks 'حفظ كمسودة'
+Then the record appears in the 'المسودات' folder
+And the user can open and edit it
+#التحقق من حفظ المراسلة كمسودة وإمكانية تعديلها",
+TC035,"@P1
+Scenario: Verify that a sent or registered correspondence becomes read-only
+Given a correspondence has been sent
+When the user opens it
+Then all fields are read-only
+And no edit action is available
+#التحقق من أن المراسلة بعد الإرسال أو القيد تصبح للقراءة فقط",
+TC036,"@P2
+Scenario: Verify that attachments are uploaded within the allowed types and size
+Given the user is creating a correspondence
+When the user uploads PDF, image and Office files under 25 MB
+Then the files are attached successfully
+And they can be downloaded after saving
+#التحقق من رفع المرفقات المسموحة بحجم أقل من 25 ميجابايت",
+TC037,"@P3
+Scenario: Verify that attachments larger than 25 MB or of unsupported type are rejected
+Given the user is creating a correspondence
+When the user uploads a file larger than 25 MB or with an unsupported extension
+Then the upload is rejected with a clear validation message
+#التحقق من رفض المرفقات الأكبر من 25 ميجابايت أو غير المدعومة",
+TC038," @P1
+Scenario: Verify that a confidential correspondence is visible only to authorized users
+Given a correspondence is marked as 'سرّي'
+When a user without access opens the register
+Then the record has flag confidential 
+And the confidential badge appears for authorized users
+#التحقق من أن المراسلة السرّية تظهر للمستخدمين المصرّح لهم فقط",byzhr bs lock bs no permissions required
+TC039,"@P2
+Scenario: Verify that the user can reply, reply all and resend a correspondence
+Given a received correspondence exists
+When the user clicks 'رد', 'رد على الجميع' or 'إعادة إرسال'
+Then a new draft is created prefixed with 'رد :' or 'اعادة ارسال :'
+And recipients are pre-filled according to the selected action
+#التحقق من الرد والرد على الجميع وإعادة الإرسال وتعبئة المستلمين تلقائياً",
+TC040,"@P2
+Scenario: Verify that sending an email correspondence to an entity without an email address is handled
+Given the selected entity has no email address
+When the user sends an outgoing correspondence of type 'بريد الكترونى'
+Then the system shows a clear message that the entity has no email address
+And the external sending is not reported as successful
+#التحقق من التعامل مع إرسال بريد إلكتروني لجهة بدون عنوان بريد",not handled (business gab) can make email mandatory foe external 
+TC041,"@P1
+Scenario: Verify that an email from the external entity is fetched into the unclassified list with its attachment
+Given the system mailbox is connected with status 'يستقبل'
+When 'الاتحاد المصري لكرة القدم' sends 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' with the attachment 'قائمة_اللاعبين_المقيدين.pdf' to the system mailbox
+And the mailbox sync runs
+Then the email appears in 'غير مصنّف' with the sender, subject and body
+And the attachment 'قائمة_اللاعبين_المقيدين.pdf' opens correctly
+#التحقق من وصول بريد الاتحاد المصري لكرة القدم إلى قائمة غير مصنّف بالمرفق سليم",
+TC042,"@P1
+Scenario: Verify that the unclassified email is classified as incoming and directed to the sub-entity
+Given the email 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' exists in 'غير مصنّف'
+When the admin (or a user with admin permissions) sets 'الاتجاه' = 'وارد' and 'النوع' = 'بريد الكترونى'
+And directs it to 'إدارة الكرة' and registers it
+Then it gets a reference number in format YYYY/N/I
+And it moves from 'غير مصنّف' to 'الوارد' and the 'تحتاج تصنيفًا' counter decreases
+And it is visible to 'كريم حسن' and 'عمرو فتحي' (persons of 'إدارة الكرة')
+#التحقق من تصنيف بريد الاتحاد كوارد وتوجيهه لإدارة الكرة وظهوره لأشخاصها",التصنيف هو الارشفه ليس الاتجاه
+TC043,"@P2
+Scenario: Verify that classification cannot be completed without direction, type and directed entity
+Given an email exists in the 'غير مصنّف' folder
+When the user tries to register or archive it without 'الاتجاه', 'النوع' or the directed entity
+Then validation messages are displayed for the missing fields
+And the record stays in 'غير مصنّف'
+#التحقق من إلزامية الاتجاه والنوع والجهة قبل تصنيف البريد",
+TC044,"@P1
+Scenario: Verify that the classified email is archived into the sub-entity folder with all template fields filled
+Given the registered email 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' is directed to 'إدارة الكرة'
+When the user archives it into 'أرشيف النادي الأهلي 2026' > 'أرشيف إدارة الكرة'
+And selects 'قالب أرشفة مراسلات النادي الأهلي'
+And fills the mandatory fields 'رقم خطاب الجهة' = 'EFA/2026/1184', 'القيمة المالية' = '25000', 'تاريخ الخطاب' = '14/11/2026', 'تصنيف المراسلة' = 'طلب' and 'يتطلب رد' = 'نعم'
+And fills the optional fields 'ملاحظات الأرشفة' = 'قائمة مبدئية بانتظار توقيع المدير الفني', 'عدد الصفحات' = '12', 'تاريخ المتابعة' = '20/11/2026', 'درجة الأهمية' = 'عاجل' and 'تم الرد' = 'لا'
+Then it gets an archive reference in format YYYY/N/A
+And it appears in 'أرشيف إدارة الكرة' with the attachment and all 10 entered index values
+And the 'بانتظار الحفظ' counter decreases
+#التحقق من أرشفة بريد الاتحاد الموجّه لإدارة الكرة في مجلدها مع تعبئة كل حقول القالب الإلزامية والاختيارية",
+TC045,"@P1
+Scenario: Verify that a correspondence can be archived with only the mandatory template fields filled
+Given 'هشام رضا' registered the outgoing 'مطالبة بمستحقات حقوق البث – الدور الأول' from 'الإدارة المالية' to 'الاتحاد المصري لكرة القدم'
+When the user archives it into 'أرشيف النادي الأهلي 2026' > 'أرشيف الإدارة المالية'
+And selects 'قالب أرشفة مراسلات النادي الأهلي'
+And fills only the mandatory fields 'رقم خطاب الجهة' = 'AHLY-FIN/2026/0457', 'القيمة المالية' = '1250000', 'تاريخ الخطاب' = '10/11/2026', 'تصنيف المراسلة' = 'مطالبة' and 'يتطلب رد' = 'نعم'
+And leaves all optional fields empty
+Then it is archived with a reference in format YYYY/N/A
+And the optional fields are saved as empty
+And it appears in 'أرشيف الإدارة المالية'
+#التحقق من أرشفة مطالبة الإدارة المالية بتعبئة الحقول الإلزامية فقط وترك الاختيارية فارغة",
+TC046,"@P2
+Scenario: Verify that only the mandatory template fields are enforced when archiving
+Given a registered correspondence directed to 'إدارة الكرة'
+When the user archives it into 'أرشيف إدارة الكرة' using 'قالب أرشفة مراسلات النادي الأهلي'
+And fills only the optional fields and leaves the mandatory fields empty
+Then 'حقل مطلوب' is shown under 'رقم خطاب الجهة', 'القيمة المالية', 'تاريخ الخطاب', 'تصنيف المراسلة' and 'يتطلب رد'
+And no validation is shown under the optional fields
+And the correspondence is not archived
+#التحقق من إلزامية الحقول الإلزامية فقط في القالب وعدم ظهور رسالة للحقول الاختيارية",
+TC047,"@P2
+Scenario: Verify that each index field accepts only values of its data type, mandatory or optional
+Given the user is archiving with 'قالب أرشفة مراسلات النادي الأهلي'
+When the user enters 'خمسة وعشرون ألف' in 'القيمة المالية' (رقم - إلزامي) and 'اثنا عشر' in 'عدد الصفحات' (رقم - اختياري)
+And enters '31/02/2026' in 'تاريخ الخطاب' (تاريخ - إلزامي) and 'تاريخ المتابعة' (تاريخ - اختياري)
+Then a validation message is shown for each invalid value
+And 'تصنيف المراسلة' and 'درجة الأهمية' allow selecting only their listed options
+And 'يتطلب رد' and 'تم الرد' accept only 'نعم' or 'لا'
+#التحقق من أن كل حقل فهرسة إلزامي أو اختياري يقبل قيم نوع البيانات الخاص به فقط",
+TC048,"@P2
+Scenario: Verify that advanced search returns archived documents by mandatory and optional index values
+Given 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' is archived in 'أرشيف إدارة الكرة' with 'رقم خطاب الجهة' = 'EFA/2026/1184' and 'درجة الأهمية' = 'عاجل'
+When the user runs 'بحث متقدم' by 'رقم خطاب الجهة' = 'EFA/2026/1184'
+Or by 'درجة الأهمية' = 'عاجل' within 'أرشيف إدارة الكرة'
+Then the archived email is returned with its index values and attachment
+#التحقق من البحث المتقدم في الأرشيف بقيم الحقول الإلزامية والاختيارية",
+TC049,"@P3
+Scenario: Verify that selecting an archive folder shows its documents and the count is correct
+Given 'أرشيف إدارة الكرة' contains the archived 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027'
+When the user selects 'أرشيف إدارة الكرة'
+Then its documents are displayed
+And the count beside the folder matches the number of documents
+#التحقق من عرض مستندات أرشيف إدارة الكرة وتطابق العدد",
+TC050,"@P2
+Scenario: Verify that emails from a blocked (spam) address are excluded from intake
+Given a sender address is added to the mailbox 'عناوين السبام' list
+When that sender sends an email to the mailbox
+And the sync runs
+Then the email is not registered
+And it is recorded as excluded in 'سجل الاستلام'
+#التحقق من استبعاد الإيميلات الواردة من العناوين المحجوبة",
+TC051,"@P3
+Scenario: Verify that the intake log shows fetched messages and links to the created document
+Given emails were fetched from the mailbox
+When the admin opens 'سجل الاستلام' and filters by 'النتيجة' and date
+Then each message shows result, seen time and message id
+And 'فتح الوثيقة' opens the registered correspondence
+#التحقق من سجل الاستلام وفلاتره وفتح الوثيقة المرتبطة",
+TC052,"@P1
+Scenario: Verify that mail directed to a specific person in an internal entity is visible only to that person
+Given 'تقرير تقييم أداء الجهاز الفني' is directed to the person 'كريم حسن' in 'إدارة الكرة'
+When 'كريم حسن' logs in
+Then the mail is visible to him
+When 'عمرو فتحي' (same sub-entity), 'محمد عادل' (main entity), 'منى سعيد', 'هشام رضا' or the admin logs in
+Then the mail is not visible in lists, counters or 'البحث في كل السجلات'
+And opening its direct URL is denied
+#التحقق من أن البريد الموجّه لكريم حسن لا يطّلع عليه أحد غيره حتى زميله في نفس الإدارة أو الأدمن",
+TC053,"@P1
+Scenario: Verify that mail directed to a sub-entity is visible to the persons under that sub-entity
+Given 'تحديث قيمة اشتراكات الأعضاء لعام 2027' is directed to 'إدارة العضويات'
+When 'منى سعيد' (person of 'إدارة العضويات') logs in
+Then the mail is visible to her
+#التحقق من أن البريد الموجّه لإدارة العضويات يظهر للأشخاص تحتها",
+TC054,"@P1
+Scenario: Verify that mail directed to a sub-entity is not visible to users outside it, even from the main entity
+Given 'تحديث قيمة اشتراكات الأعضاء لعام 2027' is directed to 'إدارة العضويات'
+When 'محمد عادل' (main entity 'النادي الأهلي') logs in
+Or 'كريم حسن', 'عمرو فتحي' and 'هشام رضا' log in
+Then the mail is not visible to any of them
+And opening its direct URL is denied
+#التحقق من عدم ظهور بريد إدارة العضويات لمن هم خارجها حتى لو من الجهة الرئيسية",
+TC055,"@P1
+Scenario: Verify that mail directed to the main entity is visible to all persons under it, including sub-entities
+Given 'دعوة لحضور اجتماع الجمعية العمومية العادية' is directed to 'النادي الأهلي'
+When 'محمد عادل', 'كريم حسن', 'عمرو فتحي', 'منى سعيد' and 'هشام رضا' log in
+Then the mail is visible to all of them
+#التحقق من أن البريد الموجّه للنادي الأهلي يظهر لكل الأشخاص تحته بما فيهم أشخاص الإدارات الفرعية",
+TC056,"@P1
+Scenario: Verify that the admin can view mail directed to entities but not mail directed to a specific person
+Given 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' is directed to 'إدارة الكرة'
+And 'تقرير تقييم أداء الجهاز الفني' is directed to the person 'كريم حسن'
+When the admin logs in
+Then 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' is visible to the admin
+And 'تقرير تقييم أداء الجهاز الفني' is not visible in lists, search or by direct URL
+#التحقق من أن الأدمن يرى البريد الموجّه لإدارة الكرة ولا يرى البريد الموجّه لكريم حسن",
+TC057,"@P1
+Scenario: Verify that internal mail between two employees is private to sender and recipient only
+Given 'كريم حسن' sends the internal message 'طلب صرف مكافآت الفوز بالدوري' to 'هشام رضا' from 'البريد الداخلي'
+When 'هشام رضا' logs in
+Then the message is in his 'الرسائل الواردة' and in 'كريم حسن' 'الرسائل الصادرة'
+When 'عمرو فتحي', 'محمد عادل' (entity manager) or the admin logs in
+Then the message is not visible in mailbox, 'البحث في كل السجلات', reports or by direct URL
+#التحقق من خصوصية الرسالة الداخلية بين كريم حسن وهشام رضا وعدم اطّلاع مدير الجهة أو الأدمن عليها",
+TC058,"@P3
+Scenario: Verify that an internal message can be saved as a draft and deleted
+Given the user is composing an internal message
+When the user saves it as a draft
+Then it appears in 'المسودات'
+When the user deletes a message
+Then it moves to 'المحذوفات'
+#التحقق من حفظ الرسالة الداخلية كمسودة وحذفها",
+TC059,"@P4
+Scenario: Verify that the internal mailbox filters work (unread only, date range, subject)
+Given messages exist in the inbox
+When the user applies 'غير المقروءة فقط', a date range or searches by subject
+Then only matching messages are displayed
+#التحقق من فلاتر البريد الداخلي (غير المقروء، التاريخ، الموضوع)",
+TC060,"@P1
+Scenario: Verify that an internal user sends an external mail request with an attachment to the Registry
+Given 'كريم حسن' in 'إدارة الكرة' needs to reply to 'الاتحاد المصري لكرة القدم'
+When he creates 'رد النادي الأهلي بشأن اعتماد قائمة اللاعبين المقيدين' directed to 'السجل / Registry'
+And attaches 'قائمة_اللاعبين_المعتمدة.pdf'
+And clicks 'إرسال'
+Then the correspondence appears in the Registry's 'بانتظار التسجيل' list with the attachment
+#التحقق من إرسال طلب البريد الخارجي بمرفق من إدارة الكرة إلى السجل",
+TC061,"@P1
+Scenario: Verify that the Registry sends the external mail with its attachment to the external entity
+Given 'رد النادي الأهلي بشأن اعتماد قائمة اللاعبين المقيدين' is pending at the Registry
+When the admin (or a user with admin permissions) registers it as 'صادر' of type 'بريد الكترونى' to 'الاتحاد المصري لكرة القدم' ('external.entity@example.com')
+And clicks 'إرسال'
+Then it gets a reference number in format YYYY/N/O with status 'تم الإرسال الخارجي'
+And the external entity receives the email with the same subject, body and 'قائمة_اللاعبين_المعتمدة.pdf' opening correctly
+#التحقق من إرسال السجل البريد الخارجي للاتحاد ووصوله فعلياً بالمرفق سليم",
+TC062,"@P2
+Scenario: Verify that an internal non-Registry user cannot send external mail directly
+Given 'كريم حسن' in 'إدارة الكرة' has no admin permissions
+When he tries to send a correspondence directly to 'الاتحاد المصري لكرة القدم'
+Then direct external sending is not allowed
+And he is guided to route it through 'السجل / Registry'
+#التحقق من أن الإرسال الخارجي من إدارة الكرة يتم عبر السجل فقط",he can send but if he does not have permission for incoming and outgoing screens he will not be able to register is and compelete sending process
+TC063,"@P3
+Scenario: Verify that searching by subject and by body works with the 3-character minimum
+Given records exist with known subject and body text
+When the user searches by subject
+Then matching records are listed
+When the user enables 'البحث في متن الرسالة أيضًا' and types less than 3 characters
+Then the hint 'يتطلب البحث في المتن ثلاثة أحرف على الأقل.' is shown
+#التحقق من البحث بالموضوع والمتن وشرط الثلاثة أحرف",
+TC064,"@P3
+Scenario: Verify that filter and sort in the register return correct results
+Given the user is on 'الصادر و الوارد'
+When the user applies 'تصفية' ('الاتجاه', 'النوع', date range, 'مجلد البريد')
+And sorts by 'الموضوع', 'الرقم المرجعي' or 'التاريخ'
+Then only matching records are shown in the correct order
+#التحقق من التصفية والترتيب في سجل الصادر والوارد",
+TC065,"@P3
+Scenario: Verify that read/unread status updates when opening a correspondence
+Given an unread correspondence exists
+When the user opens it
+Then it is shown as 'مقروء'
+And the folder unread counter decreases
+#التحقق من تحديث حالة المقروء/غير المقروء والعدادات",
+TC066,"@P3
+Scenario: Verify that correspondence can be moved to Spam and Deleted and restored
+Given a record exists in 'الوارد'
+When the user marks it as spam or deletes it
+Then it moves to the 'المزعجة' or 'المحذوفة' folder
+And the user can restore it to its original folder
+#التحقق من نقل المراسلة للمزعجة أو المحذوفة واسترجاعها",
+TC067,"@P4
+Scenario: Verify that pagination in the register works correctly
+Given more than 50 records exist
+When the user navigates pages or changes page size
+Then the correct records and 'عرض x–y من z' are displayed
+#التحقق من الترقيم والتنقل بين الصفحات في السجل",
+TC068,"@P2
+Scenario: Verify that the user can create a task with mandatory data and assign it
+Given the user is on 'المهام'
+When the user clicks 'مهمة جديدة'
+And fills 'اسم المهمة' = 'مراجعة عقود اللاعبين الجدد', 'الأولوية', start and end dates and 'منفذ المهمة' = 'كريم حسن'
+And saves
+Then the task appears in the 'جديدة' column assigned to 'كريم حسن'
+And 'كريم حسن' receives a notification
+#التحقق من إنشاء مهمة وإسنادها لكريم حسن",
+TC069,"@P2
+Scenario: Verify that a task can be created linked to a correspondence
+Given 'طلب اعتماد قائمة اللاعبين المقيدين – الموسم 2026/2027' is registered with an incoming reference number
+When the user creates the task 'متابعة اعتماد قائمة اللاعبين' from that correspondence and assigns it to 'عمرو فتحي'
+Then the task shows the correspondence reference number
+And clicking it opens the correspondence
+#التحقق من إنشاء مهمة مرتبطة ببريد الاتحاد وإسنادها لعمرو فتحي",
+TC070,"@P2
+Scenario: Verify that a task moves through its lifecycle ('جديدة', 'قيد التنفيذ', 'منتهية')
+Given a task is assigned to the user
+When the user starts the task and updates progress
+Then it moves to 'قيد التنفيذ' with the progress percentage
+When progress reaches 100% and the task is completed
+Then it moves to 'منتهية' with the completion date
+#التحقق من دورة حياة المهمة من جديدة إلى قيد التنفيذ إلى منتهية",
+TC071,"@P2
+Scenario: Verify that the assignee can reject a task
+Given a task is assigned to the user
+When the user rejects the task
+Then it moves to the 'مرفوضة' column
+And the creator is notified
+#التحقق من رفض المهمة من المنفذ",
+TC072,"@P3
+Scenario: Verify that a task past its end date is flagged as overdue
+Given an open task with an end date in the past
+When the user opens 'المهام'
+Then the task shows the 'متأخرة' flag
+And it appears when 'المتأخرة فقط' filter is applied
+#التحقق من ظهور علامة متأخرة على المهام المتجاوزة لموعدها",
+TC073,"@P3
+Scenario: Verify that Out of office delegates the user's tasks during the absence period
+Given the user sets 'خارج المكتب' with a period and a delegate
+When a task is assigned to the user during that period
+Then it is handled according to the out-of-office rule (delegated / flagged)
+#التحقق من خاصية خارج المكتب وتأثيرها على إسناد المهام",
+TC074,"@P4
+Scenario: Verify that task filters and Board/List views work correctly
+Given tasks exist with different statuses, priorities and assignees
+When the user applies filters ('الحالة', 'منشئ المهمة', 'منفذ المهمة', 'الأولوية', 'الاستحقاق من', 'الاستحقاق حتى', 'المفتوحة فقط')
+Then only matching tasks are shown
+And switching between 'لوحة' and 'قائمة' views keeps the filtered results
+#التحقق من فلاتر المهام والتبديل بين عرض اللوحة والقائمة",
+TC075,"@P3
+Scenario: Verify that dashboard counters match the actual number of records in each list
+Given the user is logged in
+When the user opens 'اللوحة الرئيسية'
+Then counters ('تحتاج تصنيفًا', 'مهام جديدة', 'البريد الوارد', 'بانتظار الحفظ', 'مسودات', 'قيد التنفيذ') match the records in their lists
+And clicking each counter opens the related filtered list
+#التحقق من تطابق عدادات اللوحة الرئيسية مع عدد السجلات الفعلي وفتح القائمة الصحيحة",
+TC076,"@P4
+Scenario: Verify that dashboard quick actions open the correct screens
+Given the user is on the dashboard
+When the user clicks 'تسجيل مراسلة', 'إرسال رسالة داخلية', 'ابدأ مهامي الجديدة' and 'ابحث في الأرشيف'
+Then each action opens its related screen
+#التحقق من أن الإجراءات السريعة في اللوحة الرئيسية تفتح الشاشات الصحيحة",
+TC077,"@P3
+Scenario: Verify that the global search returns matching records from all modules
+Given records exist with a known subject
+When the user searches the subject using 'البحث في كل السجلات'
+Then matching records are listed
+And opening a result shows the record details
+#التحقق من البحث العام في كل السجلات وفتح النتيجة",
+TC078,"@P3
+Scenario: Verify that in-portal notifications are received and open the related record
+Given a task is assigned or a message is sent to the user
+When the user opens 'الإشعارات'
+Then a new notification is displayed
+And clicking it opens the related record
+#التحقق من استلام الإشعارات داخل البوابة وفتح السجل المرتبط",
+TC079,"@P2
+Scenario: Verify that 'سجل الوارد' and 'سجل الصادر' reports show records within the period
+Given incoming and outgoing records exist in a date range
+When the user selects 'التقرير', 'صيغة الإخراج' = PDF and the date range
+And clicks 'معاينة'
+Then one line per record within the period is displayed
+And 'تنزيل' produces the PDF file
+#التحقق من تقريري سجل الوارد والصادر خلال الفترة والمعاينة والتنزيل",
+TC080,"@P3
+Scenario: Verify that 'معدل التشغيل', 'تتبّع مسار المستند', 'نشاط المستخدم' and 'مؤشرات أداء المديرين' reports generate correct data
+Given data exists for the selected parameters
+When the user generates each report ('معدل التشغيل', 'تتبّع مسار المستند', 'نشاط المستخدم', 'مؤشرات أداء المديرين')
+Then the report shows data consistent with the system records
+#التحقق من صحة بيانات تقارير معدل التشغيل وتتبع المستند ونشاط المستخدم ومؤشرات المديرين",
+TC081,"@P4
+Scenario: Verify that report validation prevents an invalid date range
+Given the user is on Reports
+When the user sets 'من تاريخ' later than 'إلى تاريخ' or leaves required parameters empty
+And clicks 'معاينة'
+Then a validation message is displayed and no report is generated
+#التحقق من منع إنشاء تقرير بفترة تاريخ غير صحيحة",
+TC082,"@P2
+Scenario: Verify that the daily register summary is sent to configured recipients
+Given recipients are configured in 'ملخص السجل اليومي'
+When the admin clicks 'إرسال الآن' or the scheduled time is reached
+Then recipients receive the summary email
+And recipients with a system account also receive an in-portal notification
+And the last run status is updated
+#التحقق من إرسال ملخص السجل اليومي للمستلمين وإشعار أصحاب الحسابات",
+TC083,"@P2
+Scenario: Verify that user actions are recorded in the audit log
+Given a user logs in and performs actions (create, send, archive, delete)
+When the admin opens 'سجل التدقيق'
+And filters by user, event and date range
+Then each action is listed with user, event and timestamp
+#التحقق من تسجيل إجراءات المستخدمين في سجل التدقيق والفلترة عليه",
+المرحلة,الـ TCs,الهدف
+1. الدخول وإعدادات النظام,TC001 – TC010,دخول الأدمن، اللغة، أكواد النظام (نوع الجهة وغيرها مطلوبة قبل إنشاء الجهات)، قوالب الأدوار، هوية الجهة، صندوق البريد IMAP وSMTP
+2. الجهات,TC011 – TC016,النادي الأهلي و3 إدارات بأشخاصها، والجهة الخارجية الاتحاد المصري لكرة القدم
+3. ملفات الأرشيف,TC017 – TC018,أرشيف النادي الأهلي 2026 ومجلداته الفرعية
+4. القوالب,TC019 – TC020,قالب أرشفة مراسلات النادي الأهلي (حقول إلزامية واختيارية)
+5. المستخدمون والصلاحيات,TC021 – TC027,يوزر لكل شخص بدون OTP، والتحقق من الصلاحيات
+6. دخول اليوزرز الجديدة,TC028 – TC030,التأكد من جاهزية اليوزرز قبل المراسلات
+7. المراسلات الرسمية,TC031 – TC040,تسجيل الوارد والصادر، المسودات، المرفقات، السرية، الرد
+8. الوارد الخارجي والتصنيف والأرشفة,TC041 – TC051,بريد الاتحاد → غير مصنّف → تصنيف وتوجيه لإدارة الكرة → أرشفة بالقالب
+9. صلاحيات الاطّلاع,TC052 – TC056,الموجّه لشخص / لجهة فرعية / للجهة الرئيسية / ما يراه الأدمن
+10. البريد الداخلي,TC057 – TC059,الإرسال بين الموظفين وخصوصيته
+11. المراسلة الخارجية عبر السجل,TC060 – TC062,إدارة الكرة → السجل → الاتحاد المصري لكرة القدم
+12. قوائم السجل,TC063 – TC067,البحث والفلترة والمقروء والمزعجة والصفحات
+13. المهام,TC068 – TC074,إنشاء وربط ودورة حياة المهام
+14. اللوحة الرئيسية والبحث والإشعارات,TC075 – TC078,التحقق من العدادات بعد وجود داتا حقيقية
+15. التقارير والمتابعة,TC079 – TC083,التقارير، الملخص اليومي، سجل التدقيق

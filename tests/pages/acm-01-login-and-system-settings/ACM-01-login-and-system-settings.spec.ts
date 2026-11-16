@@ -1,5 +1,23 @@
-import { test } from '../../../src/fixtures/acm.fixture';
-import { scenario } from '../../../src/utils/core/scenario-test';
+import { expect, test } from '../../../src/fixtures/acm.fixture';
+import { given, scenario, then, when } from '../../../src/utils/core/scenario-test';
+import { asSetup } from '../../../src/utils/core/setup-step';
+import { autoEmail, autoName } from '../../../src/domain/acm-names';
+import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
+import { keptLookupValues, languages, lookupTables, mailboxStatus, messages, routes } from '../../../test-data/acm/acm.data';
+
+/** A lookup value of the case's own: a Latin code (AT + run id) and labels prefixed auto-test-. */
+const lookupValue = (runId: string, label: string) => ({
+  code: `AT${runId.toUpperCase()}`,
+  ar: autoName(runId, label),
+  en: autoName(runId, 'value'),
+  fr: autoName(runId, 'valeur'),
+});
+
+/** A valid PNG, padded past the 1 MB the logo allows. */
+const pngOfSize = (bytes: number): Buffer => {
+  const onePixel = Buffer.from('89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D4944415478DA6364F8FFFF3F0005FE02FEA7D4E2A50000000049454E44AE426082', 'hex');
+  return Buffer.concat([onePixel, Buffer.alloc(bytes - onePixel.length)]);
+};
 
 //========================================================================
 // ACM-01 - Login and System Settings
@@ -19,8 +37,20 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then the user is redirected to the dashboard
     And the user name and role appear in the header
     #Arabic: التحقق من تسجيل الدخول بنجاح ببيانات صحيحة لمستخدم مفعّل
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, newUser, loginPage, appShell }) => {
+    // An active user of the case's own, with a known role ('مشغل'), so the header can be checked against it
+    const user = await given(async () => {
+      const created = await asSetup('create an active user with the role مشغل', () => newUser({ role: 'operator' }));
+      await loginPage.open();
+      return created;
+    });
+    await when(() => loginPage.signIn(user.userName, user.password));
+    await then(async () => {
+      await expect(page).toHaveURL(/\/$/);
+      await appShell.expectSignedIn();
+      await expect(appShell.accountButton, 'the header should show the user name').toContainText(user.fullName);
+      await expect(appShell.accountButton, `the header should show the role '${user.roleName}'`).toContainText(user.roleName);
+    });
   });
 
   test(...scenario('ACM-01-02', `
@@ -31,8 +61,25 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then labels are displayed in English with LTR layout
     And switching back restores Arabic with RTL layout
     #Arabic: التحقق من تبديل اللغة بين العربية والإنجليزية واتجاه الصفحة
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, appShell }) => {
+    const expectLanguage = async (language: (typeof languages)['ar' | 'en']) => {
+      await expect(page.locator('html')).toHaveAttribute('dir', language.dir);
+      await expect(page.locator('html')).toHaveAttribute('lang', language.lang);
+      // The first link also shows its unread count ("البريد الداخلي 134"): its label is checked, not the whole text
+      await expect(appShell.navigation.getByRole('link').first()).toContainText(language.firstNavigationLink);
+      await expect(appShell.languageButton).toHaveText(language.languageButton);
+    };
+    await given(async () => {
+      await signIn('ADMIN');
+      await appShell.open(routes.dashboard);
+      await expectLanguage(languages.ar);
+    });
+    await when(() => appShell.languageButton.click());
+    await then(async () => {
+      await expectLanguage(languages.en);
+      await appShell.languageButton.click();
+      await expectLanguage(languages.ar);
+    });
   });
 
   test(...scenario('ACM-01-03', `
@@ -45,8 +92,26 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then the value is saved
     And appears in the related dropdowns across the system
     #Arabic: التحقق من إضافة قيمة في أكواد النظام وظهورها في القوائم المرتبطة
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, runId, adminApi, cleanup, lookupsPage, correspondenceForm }) => {
+    // 'نوع الوثيقة' feeds 'النوع' of the correspondence form
+    const table = lookupTables.documentType;
+    const value = lookupValue(runId, 'نوع وثيقة');
+    await given(async () => {
+      await signIn('ADMIN');
+      await lookupsPage.open(table.label);
+    });
+    await when(async () => {
+      cleanup(() => adminApi.deleteLookupValue(table.api, value.code));
+      await lookupsPage.addValue(value);
+      await lookupsPage.saveTableButton.click();
+    });
+    await then(async () => {
+      await expect(page.getByText(messages.lookupSaved).first()).toBeVisible();
+      await lookupsPage.open(table.label);
+      await expect(lookupsPage.row(value.code), 'the value should still be in the table after reopening it').toHaveCount(1);
+      await correspondenceForm.open();
+      expect(await correspondenceForm.typeOptions(), "'النوع' of a new correspondence should offer the value").toContain(value.ar);
+    });
   });
 
   test(...scenario('ACM-01-04', `
@@ -57,8 +122,32 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then it is no longer available in new records
     And existing records keep their value
     #Arabic: التحقق من إخفاء قيمة الكود المعطّلة من القوائم مع الحفاظ على السجلات القديمة
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, runId, adminApi, cleanup, lookupsPage, correspondenceForm, registerPage }) => {
+    const table = lookupTables.documentType;
+    // A value used by a record can never be deleted, so the case keeps one value of its own (deactivated between runs)
+    const value = keptLookupValues.deactivationCase;
+    // An active value, and an existing record (a draft) that uses it
+    const draftId = await given(() =>
+      asSetup('activate the document type of the case and add a draft that uses it', async () => {
+        const valueId = await adminApi.activeLookupValue(table.api, value);
+        const id = await adminApi.createDraft(autoName(runId, 'draft'), valueId);
+        cleanup(() => adminApi.purgeCorrespondence(id));
+        await signIn('ADMIN');
+        return id;
+      }),
+    );
+    await when(async () => {
+      await lookupsPage.open(table.label);
+      await lookupsPage.setActive(value.code, false);
+      await lookupsPage.saveTableButton.click();
+      await expect(page.getByText(messages.lookupSaved).first()).toBeVisible();
+    });
+    await then(async () => {
+      await correspondenceForm.open();
+      expect(await correspondenceForm.typeOptions(), "a new correspondence should no longer offer the value in 'النوع'").not.toContain(value.ar);
+      await registerPage.openRecord('Draft', draftId);
+      expect(await registerPage.detailValue('النوع'), 'the existing draft should keep its value').toBe(value.ar);
+    });
   });
 
   test(...scenario('ACM-01-05', `
@@ -70,8 +159,36 @@ test.describe('ACM-01 Login and System Settings', () => {
     When the admin adds a value with an existing code
     Then a duplicate validation message is shown
     #Arabic: التحقق من ترتيب قيم الأكواد ورفض الكود المكرر
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, runId, adminApi, cleanup, lookupsPage, tasksPage }) => {
+    // 'الأولوية' feeds the priority of tasks; the case moves its own value to the top, then the order is put back
+    const table = lookupTables.priority;
+    const value = lookupValue(runId, 'أولوية');
+    await given(() =>
+      asSetup('add a priority of the case', async () => {
+        const before = await adminApi.lookupRows(table.api);
+        cleanup(() => adminApi.restoreLookupOrder(table.api, before));
+        await adminApi.addLookupValue(table.api, { ...value, orderLevel: before.length + 1 });
+        cleanup(() => adminApi.deleteLookupValue(table.api, value.code));
+        await signIn('ADMIN');
+      }),
+    );
+    await when(async () => {
+      await lookupsPage.open(table.label);
+      await lookupsPage.moveTo(value.code, 1);
+      await lookupsPage.saveTableButton.click();
+      await expect(page.getByText(messages.lookupSaved).first()).toBeVisible();
+    });
+    await then(async () => {
+      await tasksPage.open();
+      expect((await tasksPage.priorityOptions())[0], "the moved value should come first in the tasks' 'الأولوية'").toBe(value.ar);
+    });
+    await when(async () => {
+      await lookupsPage.open(table.label);
+      await lookupsPage.addValue({ ...value, ar: autoName(runId, 'مكرر') });
+    });
+    await then(async () => {
+      await expect(page.getByText(messages.duplicateLookupCode).first()).toBeVisible();
+    });
   });
 
   test(...scenario('ACM-01-06', `
@@ -81,8 +198,27 @@ test.describe('ACM-01 Login and System Settings', () => {
     When the admin clicks 'قالب جديد' and fills 'الكود', 'الاسم' and selected 'الصلاحيات'
     Then it appears in the list with the correct permissions count and 'مفعّل' status
     #Arabic: التحقق من إنشاء قالب دور بصلاحيات محددة
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ signIn, runId, adminApi, cleanup, roleTemplatesPage }) => {
+    const template = {
+      code: autoName(runId, 'role'),
+      nameAr: autoName(runId, 'دور'),
+      nameEn: autoName(runId, 'role'),
+      permissions: ['mailbox:view', 'tasks:view', 'tasks:create'],
+    };
+    await given(async () => {
+      await signIn('ADMIN');
+      await roleTemplatesPage.open();
+    });
+    await when(async () => {
+      cleanup(() => adminApi.deleteRoleTemplate(template.code));
+      await roleTemplatesPage.create(template);
+    });
+    await then(async () => {
+      const row = roleTemplatesPage.row(template.code);
+      await expect(row).toContainText(template.nameAr);
+      await expect(row.locator('td').nth(2), 'the permissions count').toHaveText(String(template.permissions.length));
+      await expect(row).toContainText('مفعّل');
+    });
   });
 
   test(...scenario('ACM-01-07', `
@@ -93,8 +229,44 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then the short name is printed on labels
     And the logo appears on the correspondence cover
     #Arabic: التحقق من حفظ هوية الجهة والشعار وظهورهم في الملصقات وغلاف المراسلة
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, runId, adminApi, cleanup, settingsPage, registerPage }) => {
+    // 'هوية الجهة' is the whole portal's (shared with the team): it is saved back as it was after the case. The logo
+    // uploaded is the portal's own current one, so the portal's logo never changes.
+    const identity = await given(async () => {
+      const { original, logo } = await asSetup('keep the current identity and logo', async () => ({
+        original: await adminApi.organization(),
+        logo: await adminApi.organizationLogo(),
+      }));
+      cleanup(() =>
+        adminApi.setOrganization({ name: original.nameTranslations, alias: original.aliasTranslations, address: original.addressTranslations }),
+      );
+      await signIn('ADMIN');
+      await settingsPage.open();
+      return {
+        name: autoName(runId, 'جهة الهوية'),
+        shortName: `AT${runId.toUpperCase()}`,
+        address: 'القاهرة، مصر',
+        logo: { name: logo.fileName, mimeType: logo.contentType, buffer: Buffer.from(logo.content, 'base64') },
+      };
+    });
+    const status = await when(() => settingsPage.saveIdentity(identity));
+    await then(async () => {
+      expect(status, "'حفظ الهوية' should save").toBeLessThan(300);
+      await settingsPage.open();
+      await expect(settingsPage.identityFields.nameAr).toHaveValue(identity.name);
+      await expect(settingsPage.identityFields.aliasAr).toHaveValue(identity.shortName);
+      await expect(settingsPage.identityFields.addressAr).toHaveValue(identity.address);
+      await expect(page.locator('main img').first(), 'the logo is shown').toBeVisible();
+      // A label ('تنزيل الملصق' of a record) can be produced with the saved identity
+      const recordId = await asSetup('find a record to print a label for', async () => (await adminApi.correspondenceIds('Inbox', ''))[0]);
+      await registerPage.openRecord('Inbox', recordId);
+      const [label] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'تنزيل الملصق' }).click()]);
+      expect(label.suggestedFilename(), 'the label file').toBeTruthy();
+      test.info().annotations.push({
+        type: 'note',
+        description: `The label file (${label.suggestedFilename()}) and the correspondence cover are not read here: whether they print '${identity.shortName}' and the logo is left to the reviewer.`,
+      });
+    });
   });
 
   test(...scenario('ACM-01-08', `
@@ -104,8 +276,15 @@ test.describe('ACM-01 Login and System Settings', () => {
     When the admin uploads a file larger than 1 MB or of an unsupported type
     Then the upload is rejected with a validation message
     #Arabic: التحقق من رفض شعار أكبر من 1 ميجابايت أو بصيغة غير مدعومة
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, settingsPage }) => {
+    await given(async () => {
+      await signIn('ADMIN');
+      await settingsPage.open();
+    });
+    await when(() => settingsPage.chooseLogo({ name: 'auto-test-logo.png', mimeType: 'image/png', buffer: pngOfSize(1_250_000) }));
+    await then(() => expect(page.getByText(messages.logoTooLarge).first()).toBeVisible());
+    await when(() => settingsPage.chooseLogo({ name: 'auto-test-logo.txt', mimeType: 'text/plain', buffer: Buffer.from('not a picture') }));
+    await then(() => expect(page.getByText(messages.logoWrongType).first()).toBeVisible());
   });
 
   test(...scenario('ACM-01-09', `
@@ -116,8 +295,27 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then the mailbox is saved with status 'يستقبل'
     And the password is never displayed again, only 'saved' status
     #Arabic: التحقق من إضافة صندوق بريد IMAP واتصاله وعدم عرض كلمة المرور
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, runId, adminApi, cleanup, settingsPage }) => {
+    // A mailbox of the case's own on a server that does not exist (team decision: no real inbox; whether the service
+    // really connects to a mail server is not checked here - see the hand-over)
+    const mailbox = { host: 'auto-test.invalid', port: 993, userName: `${autoName(runId, 'mailbox')}@example.com`, appPassword: `Auto#${runId}` };
+    await given(async () => {
+      await signIn('ADMIN');
+      await settingsPage.open();
+    });
+    await when(async () => {
+      cleanup(() => adminApi.deleteMailboxes(mailbox.userName));
+      await settingsPage.addMailbox(mailbox);
+    });
+    await then(async () => {
+      await settingsPage.open();
+      const card = settingsPage.mailboxCard(mailbox.userName);
+      // The password is never shown again, only that one is saved
+      await expect(card).toContainText(messages.appPasswordSaved);
+      await expect(page.locator('main')).not.toContainText(mailbox.appPassword);
+      expect(await settingsPage.appPasswordShownWhenEditing(mailbox.userName), "'كلمة مرور التطبيق' should be empty when the mailbox is edited").toBe('');
+      await expect(card, `the saved mailbox should have the status '${mailboxStatus.receiving}'`).toContainText(mailboxStatus.receiving);
+    });
   });
 
   test(...scenario('ACM-01-10', `
@@ -128,7 +326,39 @@ test.describe('ACM-01 Login and System Settings', () => {
     And clicks 'حفظ' then 'إرسال بريد اختبار'
     Then the test email is received successfully
     #Arabic: التحقق من حفظ إعدادات SMTP وإرسال بريد اختبار
-  `), async () => {
-    test.fixme(true, 'Not automated yet');
+  `), async ({ page, signIn, runId, adminApi, cleanup, settingsPage }) => {
+    // The SMTP settings are the whole portal's (shared with the team): they are saved back as they were after the case.
+    // 'كلمة المرور' is left empty ("اترك الحقل فارغًا للاحتفاظ بها"): the saved one is never answered by the server, so a
+    // password typed here could not be put back.
+    const smtp = {
+      host: 'smtp.example.com',
+      port: 587,
+      encryption: 'TLS',
+      senderEmail: autoEmail(runId, 'sender'),
+      senderName: autoName(runId, 'المرسل'),
+      user: `auto-test-smtp-${runId}`,
+      pass: '',
+    };
+    await given(async () => {
+      const original = await asSetup('keep the current SMTP settings', () => adminApi.dispatchSettings());
+      cleanup(() => adminApi.setDispatchSettings(original));
+      await signIn('ADMIN');
+      await settingsPage.open();
+    });
+    const saved = await when(() => settingsPage.configureSmtp(smtp));
+    await then(async () => {
+      expect(saved, "'حفظ' should save the SMTP settings").toBeLessThan(300);
+      await settingsPage.open();
+      await expect(page.locator('#dispatch-host')).toHaveValue(smtp.host);
+      await expect(page.locator('#dispatch-fromAddress')).toHaveValue(smtp.senderEmail);
+      await expect(settingsPage.smtpEnabled).toBeChecked();
+      await expect(page.locator('#dispatch-password'), 'the password is never shown').toHaveValue('');
+    });
+    const sentTest = await when(() => settingsPage.sendSmtpTest(autoEmail(runId, 'smtp-test')));
+    await then(() => {
+      test.info().annotations.push({ type: 'server answer', description: `'إرسال بريد اختبار': ${sentTest.status} ${sentTest.message}` });
+      blocked('the test e-mail is received', `${NO_TEST_INBOX} (and smtp.example.com is not a real server)`);
+      return Promise.resolve();
+    });
   });
 });

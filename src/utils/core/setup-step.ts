@@ -15,3 +15,10 @@ export const asSetup = async <T>(what: string, run: () => Promise<T>, options: R
     throw new Error(`${SETUP_FAILED}: could not ${what} before the check. ${detail}`, { cause: error });
   }
 };
+
+/**
+ * Preparation that creates data (users, entities, correspondence ...): run once, never tried again. A second try after
+ * a partial failure would create the same names again and fail on "already exists" instead of the real cause. A
+ * failure is still reported as "blocked", not as a bug.
+ */
+export const createData = <T>(what: string, run: () => Promise<T>): Promise<T> => asSetup(what, run, { attempts: 1 });

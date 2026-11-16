@@ -6,7 +6,10 @@ Everything the AI agent and the team need is in this project's files.
 - **System under test:** https://test-acm.3segypt.com/
 - **Stack:** Playwright + TypeScript + Allure Reports + Docx Bug Reports.
 - **Workflow:** Tests can be run from the **Dashboard** (`http://localhost:4400`) started by double-clicking `Start dashboard.cmd` (or `npm run dashboard`); `Setup.cmd` sets up any computer.
-- **Test Ingestion:** Test stories are backed by Excel sheets in `docs/test-cases/` (`ACM-01 - ...xlsx` to `ACM-15 - ...xlsx`).
+- **Test Ingestion:** Test stories are backed by Excel sheets in `docs/test-cases/` (`ACM-01 - ...xlsx` to `ACM-15 - ...xlsx`),
+  split from the master workbook `test-data/ACM_Main_TestCases_v10.xlsx` (106 cases; its "Execution Order" maps each TC to its
+  story - the QC additions TC084–TC107 are the last cases of their stories). Keep the master out of `docs/test-cases/`: the
+  dashboard would read it as a new story.
 
 ---
 
@@ -48,9 +51,19 @@ Everything the AI agent and the team need is in this project's files.
 ## Safety & Operating Rules
 
 1. **Safety:** Never commit passwords or tokens. `.env` stays on the local computer.
-2. **Data Isolation:** Prefix all test-created entities with `auto-test-` or clear them post-test.
-3. **Verdicts & Reviews:** Reviewers submit verdicts (`tests/pages/*/review.json`) via the dashboard. Update tests to match confirmed application behavior.
-4. **Hand-over Verification:**
+2. **Data Isolation:**
+   - **Club seed data (real, kept):** the Al-Hawar club ('نادى الحوار' / Al-Hawar Club) uses the portal, so its
+     departments, persons, users and external entities are real names under the existing 'نادى الحوار' entity. They
+     are made once, found by name on later runs and never deleted by a test (team decision, 2026-11-17).
+   - **Kept archive:** ACM-08 archives into one kept folder set and template (`auto-test-kept-…`, see
+     `keptArchive` in `test-data/acm/acm.data.ts`). The server never deletes a folder that has held an archived
+     document, so a per-run set would stay behind every time.
+   - **A run's own records** (correspondence, tasks, messages, one-off entities a case invents): prefix them
+     `auto-test-<runId>-` and remove them after the case (the `cleanup` fixture).
+3. **Dashboard:** the portal's dashboard ('اللوحة الرئيسية') is hidden. Cases that go through it are marked not
+   applicable (`tests/pages/<page>/not-applicable.json`) and are not run.
+4. **Verdicts & Reviews:** Reviewers submit verdicts (`tests/pages/*/review.json`) via the dashboard. Update tests to match confirmed application behavior.
+5. **Hand-over Verification:**
    ```bash
    npm run check        # type check + eslint
    npm run test:unit    # verify specs match sheets

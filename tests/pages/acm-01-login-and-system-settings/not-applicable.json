@@ -1,0 +1,6 @@
+{
+  "ACM-01-01": "The portal's dashboard ('اللوحة الرئيسية') has been hidden (team decision, 2026-11-16): the case's 'redirected to the dashboard' step no longer applies. Seen before: the header shows the full name and user name but not the role.",
+  "ACM-01-07": "Removed from the automated run at the team's request (2026-11-16): it changes the portal-wide identity and logo of the shared environment.",
+  "ACM-01-09": "Removed from the automated run at the team's request (2026-11-16): the mailbox connection needs a real IMAP server.",
+  "ACM-01-10": "Removed from the automated run at the team's request (2026-11-16): it changes the shared SMTP settings and the test e-mail needs a real inbox."
+}
