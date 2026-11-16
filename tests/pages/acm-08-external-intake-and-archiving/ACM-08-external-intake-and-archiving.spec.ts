@@ -60,12 +60,21 @@ const classify = async (page: Page, registerPage: RegisterPage, documentId: numb
   // 'توجيه داخلي' is offered for an e-mail the mailbox fetched; a record made for the case may not have it (seen live)
   const routed = Boolean(entityName) && (await registerPage.routeInternallyButton.isVisible());
   if (routed && entityName) {
+    // The dialog 'توجيه داخلي' (seen live 2026-11-17): 'شخص أو إدارة' (combobox), 'ملاحظة اختيارية', 'إلغاء' and the
+    // confirm button 'توجيه داخلي'. An option shows the name, then its entity: match the name at its start, or a
+    // person of 'إدارة الكرة' would match 'إدارة الكرة'.
     await registerPage.routeInternallyButton.click();
-    const dialog = page.getByRole('dialog');
-    await dialog.getByRole('combobox').first().click();
+    const dialog = page.getByRole('dialog').filter({ hasText: 'توجيه داخلي' });
+    await dialog.getByRole('combobox', { name: 'شخص أو إدارة' }).click();
     await page.getByPlaceholder('ابحث في الجهات والأشخاص…').fill(entityName);
-    await page.getByRole('option').filter({ hasText: entityName }).first().click();
-    await dialog.getByRole('button', { name: /^(توجيه|حفظ|تأكيد|إرسال)$/ }).last().click();
+    const escaped = entityName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await page.getByRole('option').filter({ hasText: new RegExp(`^\\s*${escaped}`) }).first().click();
+    await expect(dialog.getByRole('combobox', { name: 'شخص أو إدارة' })).toContainText(entityName);
+    await Promise.all([
+      page.waitForResponse((answer) => answer.url().includes('/api/acm/') && answer.request().method() !== 'GET', { timeout: 15_000 }).catch(() => undefined),
+      dialog.getByRole('button', { name: 'توجيه داخلي', exact: true }).click(),
+    ]);
+    await expect(dialog).toBeHidden();
   }
   if (await registerPage.acceptToInboxButton.isVisible()) {
     await Promise.all([

@@ -29,7 +29,8 @@ export class ArchivingPage extends BasePage {
   readonly folderPicker = this.page.locator('#filing-cabinet');
   readonly archiveButton = this.dialog.getByRole('button', { name: 'أرشفة', exact: true });
   /** "لم تُدخل قيمة في: ..." - the mandatory fields left empty (or holding a value of the wrong type). */
-  readonly missingValues = this.dialog.getByText(/لم تُدخل قيمة في/).first();
+  // Shown in the dialog, or as a passing notice outside it: looked for on the whole page
+  readonly missingValues = this.page.getByText(/لم تُدخل قيمة في/).first();
   readonly advancedTab = this.page.getByRole('tab', { name: 'بحث متقدم', exact: true });
   readonly advancedText = this.page.locator('#archive-advanced-text');
   readonly advancedCabinet = this.page.locator('#archive-advanced-cabinet');
