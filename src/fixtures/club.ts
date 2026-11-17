@@ -49,7 +49,7 @@ export const createClub = async (adminApi: AcmApi, runId: string, cleanup: Clean
     entityIds[sub] = await adminApi.createEntity(entityNames[sub], { type: 1, parentId: entityIds.main });
     cleanup(() => adminApi.deleteAddressBookEntry(entityIds[sub]));
   }
-  const operatorTemplate = withUsers ? await adminApi.roleTemplateId(roles.operator.code) : undefined;
+  const operatorTemplate = withUsers ? await adminApi.roleTemplateId(roles.operator.code, roles.operator.name) : undefined;
   const persons: ClubPerson[] = [];
   for (const person of club.persons) {
     const name = autoName(runId, person.name);

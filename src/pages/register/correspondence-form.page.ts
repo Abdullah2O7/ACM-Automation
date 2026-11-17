@@ -194,8 +194,9 @@ export class CorrespondenceFormPage extends BasePage {
     const sent = sendsInTwoSteps
       ? this.page.waitForResponse((answer) => /\/api\/acm\/correspondence\/\d+\/send$/.test(new URL(answer.url()).pathname) && answer.request().method() === 'POST')
       : undefined;
+    // The save carries the attachments: with a few MB it is answered in 13-20 s (seen 2026-11-17), past the 15 s default
     const [response] = await Promise.all([
-      this.page.waitForResponse((answer) => /\/api\/acm\/correspondence(\/\d+)?$/.test(new URL(answer.url()).pathname) && ['POST', 'PUT'].includes(answer.request().method())),
+      this.page.waitForResponse((answer) => /\/api\/acm\/correspondence(\/\d+)?$/.test(new URL(answer.url()).pathname) && ['POST', 'PUT'].includes(answer.request().method()), { timeout: acmTimeouts.apiCall }),
       button.click(),
     ]);
     const body = (await response.json().catch(() => ({}))) as { value?: number; errorMessage?: string };

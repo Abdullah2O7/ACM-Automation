@@ -37,7 +37,9 @@ export const sendFromTestInbox = async (mail: { to: string; subject: string; tex
   }
   const transport = nodemailer.createTransport({ host: inbox.smtpHost, port: 465, secure: true, auth: { user: inbox.address, pass: inbox.password } });
   try {
-    await transport.sendMail({ from: inbox.address, to: mail.to, subject: mail.subject, text: mail.text, attachments: mail.attachments });
+    // Like a mail client: the text in a plain part and an HTML part (a plain-only message showed no body in the portal, 2026-11-17)
+    const html = `<div dir="rtl">${mail.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`;
+    await transport.sendMail({ from: inbox.address, to: mail.to, subject: mail.subject, text: mail.text, html, attachments: mail.attachments });
   } finally {
     transport.close();
   }

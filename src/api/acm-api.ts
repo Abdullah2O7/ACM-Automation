@@ -284,10 +284,15 @@ export class AcmApi {
     return this.call<RoleTemplate[]>('GET', '/users/role-templates');
   }
 
-  async roleTemplateId(code: string): Promise<number> {
-    const found = (await this.roleTemplates()).find((template) => template.code === code);
+  /**
+   * A role template's id by its code or, when no template has that code, by its Arabic name (the team renames codes:
+   * 2026-11-17 'admin' was removed and 'مدير التطبيق' became '002'). Disabled templates are passed over.
+   */
+  async roleTemplateId(code: string, arabicName?: string): Promise<number> {
+    const templates = (await this.roleTemplates()).filter((template) => !template.isDisabled);
+    const found = templates.find((template) => template.code === code) ?? (arabicName ? templates.find((template) => template.name.ar === arabicName) : undefined);
     if (!found) {
-      throw new Error(`ROLE_TEMPLATE_NOT_FOUND: no role template with the code "${code}".`);
+      throw new Error(`ROLE_TEMPLATE_NOT_FOUND: no role template with the code "${code}"${arabicName ? ` or the name '${arabicName}'` : ''}.`);
     }
     return found.userRoleTemplateId;
   }
@@ -621,10 +626,15 @@ export class AcmApi {
   }
 
   async removeSummaryRecipient(email: string): Promise<void> {
-    const settings = await this.call<{ recipients: Record<string, unknown>[] } & Record<string, unknown>>('GET', '/settings/daily-summary');
-    const kept = settings.recipients.filter((recipient) => !Object.values(recipient).includes(email));
+    // The page's own save ('حفظ العناوين', seen in the portal's script 2026-11-17): PUT /settings/daily-summary/recipients
+    // {recipients: [address], disabledRecipients: [address]} - the whole list, so the others are sent back as they are
+    const settings = await this.call<{ recipients: { emailAddress: string; isEnabled: boolean }[] }>('GET', '/settings/daily-summary');
+    const kept = settings.recipients.filter((recipient) => recipient.emailAddress.toLowerCase() !== email.toLowerCase());
     if (kept.length !== settings.recipients.length) {
-      await this.call('PUT', '/settings/daily-summary', { ...settings, recipients: kept });
+      await this.call('PUT', '/settings/daily-summary/recipients', {
+        recipients: kept.map((recipient) => recipient.emailAddress),
+        disabledRecipients: kept.filter((recipient) => !recipient.isEnabled).map((recipient) => recipient.emailAddress),
+      });
     }
   }
 
@@ -658,6 +668,24 @@ export class AcmApi {
       throw new Error('NO_RECEIVING_MAILBOX: no mailbox of \'استقبال البريد\' is switched on.');
     }
     return receiving.userName;
+  }
+
+  /**
+   * Takes addresses out of 'عناوين السبام' of every mailbox and keeps the rest of each list as it was
+   * (PUT /settings/mail-ingestion/{id}/spam-addresses {spamAddresses}, the list's own save). Returns what was removed.
+   */
+  async removeSpamAddresses(match: (address: string) => boolean): Promise<string[]> {
+    const mailboxes = await this.call<{ mailIngestionSettingId: number; spamAddresses?: string[] }[]>('GET', '/settings/mail-ingestion');
+    const removed: string[] = [];
+    for (const mailbox of mailboxes) {
+      const list = mailbox.spamAddresses ?? [];
+      const kept = list.filter((address) => !match(address));
+      if (kept.length !== list.length) {
+        await this.call('PUT', `/settings/mail-ingestion/${mailbox.mailIngestionSettingId}/spam-addresses`, { spamAddresses: kept });
+        removed.push(...list.filter(match));
+      }
+    }
+    return removed;
   }
 
   /** Removes every receiving mailbox whose user starts with the given text (the tests' own: auto-test-...). */

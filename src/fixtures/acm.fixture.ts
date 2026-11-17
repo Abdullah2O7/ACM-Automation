@@ -171,7 +171,7 @@ export const test = base.extend<AcmFixtures, AcmWorkerFixtures>({
       const fullName = autoName(runId, `${label}-person`);
       const email = autoEmail(runId, label);
       record.personId = await adminApi.createPerson(fullName, record.entityId, email);
-      const user = await adminApi.createUser(record.personId, autoUserName(runId, label), fullName, email, await adminApi.roleTemplateId(roles[role].code));
+      const user = await adminApi.createUser(record.personId, autoUserName(runId, label), fullName, email, await adminApi.roleTemplateId(roles[role].code, roles[role].name));
       record.userId = user.appUserId;
       let password = user.temporaryPassword;
       if (firstSignIn) {

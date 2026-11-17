@@ -60,6 +60,19 @@ export class ArchivingPage extends BasePage {
     return this.dialog.getByLabel(new RegExp(`^\\s*${escaped}(\\s|\\*|$)`)).first();
   }
 
+  /**
+   * The messages under one index field (seen live 2026-11-17: "هذا الحقل مطلوب.", "أدخل رقمًا صحيحًا.", "تاريخ غير صالح.
+   * الترتيب المتوقع هو يوم/شهر/سنة."), without a date field's standing hint ("اكتب التاريخ بترتيب ...").
+   */
+  async fieldMessages(label: string): Promise<string[]> {
+    // The field's nearest surrounding element that holds a message (the message is a sibling of the field, or of a date
+    // field's wrapper); it may appear a moment after 'أرشفة'
+    const block = this.field(label).locator('xpath=ancestor::*[.//p][1]');
+    const messages = block.locator('p').filter({ hasNotText: /^\s*اكتب التاريخ بترتيب/ });
+    await messages.first().waitFor({ timeout: 5_000 }).catch(() => undefined);
+    return (await messages.allInnerTexts()).map((text) => text.trim()).filter(Boolean);
+  }
+
   /** Fills index fields by name: a text box is typed in, a list field is picked. */
   async fillFields(values: Partial<Record<string, string>>): Promise<void> {
     for (const [label, value] of Object.entries(values)) {
@@ -67,6 +80,8 @@ export class ArchivingPage extends BasePage {
         continue;
       }
       const field = this.field(label);
+      // The template's fields come a moment after the folder is chosen
+      await field.waitFor({ timeout: acmTimeouts.pageLoad });
       if ((await field.getAttribute('role')) === 'combobox') {
         await field.click();
         await this.page.getByRole('option', { name: value, exact: true }).click();
@@ -79,9 +94,14 @@ export class ArchivingPage extends BasePage {
 
   /** The options a list field offers. */
   async optionsOf(label: string): Promise<string[]> {
+    // The list before must be closed, or its options (still closing) are read with these
+    await expect(this.page.getByRole('listbox')).toHaveCount(0);
     await this.field(label).click();
-    const options = (await this.page.getByRole('option').allInnerTexts()).map((text) => text.trim()).filter((text) => text !== 'اختر قيمة');
+    const list = this.page.getByRole('listbox');
+    await expect(list).toHaveCount(1);
+    const options = (await list.getByRole('option').allInnerTexts()).map((text) => text.trim()).filter((text) => text !== 'اختر قيمة');
     await this.page.keyboard.press('Escape');
+    await expect(list).toHaveCount(0);
     return options;
   }
 

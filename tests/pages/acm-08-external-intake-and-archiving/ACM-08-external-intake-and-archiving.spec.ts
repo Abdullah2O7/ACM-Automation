@@ -4,11 +4,12 @@ import { given, scenario, then, when } from '../../../src/utils/core/scenario-te
 import { createData } from '../../../src/utils/core/setup-step';
 import { answerStatus } from '../../../src/utils/core/answer-status';
 import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
-import { autoEmail, autoName } from '../../../src/domain/acm-names';
+import { autoName } from '../../../src/domain/acm-names';
 import { AcmApi } from '../../../src/api/acm-api';
 import { createClub, useKeptArchive, createFootballAssociation, credentialsOfPerson } from '../../../src/fixtures/club';
 import type { RegisterPage } from '../../../src/pages/register/register.page';
 import type { ArchivingPage } from '../../../src/pages/archive/archiving.page';
+import type { MailIntakePage } from '../../../src/pages/admin/mail-intake.page';
 import { expectDoesNotSee, expectReceived } from '../../../src/fixtures/visibility';
 import { hasTestInbox, sendFromTestInbox, testInboxAddress } from '../../../src/utils/mail/test-inbox';
 import { writeTestFile } from '../../../src/utils/core/test-files';
@@ -45,6 +46,36 @@ const createUnclassifiedEmail = async (adminApi: AcmApi, subject: string, sender
     throw new Error(`UNCLASSIFIED_NOT_MADE: document ${documentId} did not land in 'غير مصنّف'.`);
   }
   return documentId;
+};
+
+/**
+ * Real e-mails in 'غير مصنّف': the team's test inbox sends each subject to the portal's receiving mailbox, then
+ * 'مزامنة الآن' runs until all of them are fetched (about 3 minutes at most). The settings page must be open. Returns the
+ * document ids, in the order of the subjects.
+ */
+const receiveEmails = async (adminApi: AcmApi, mailIntakePage: MailIntakePage, subjectsToSend: string[]): Promise<number[]> => {
+  const portalMailbox = await adminApi.receivingMailboxAddress();
+  for (const subject of subjectsToSend) {
+    await sendFromTestInbox({ to: portalMailbox, subject, text: `${subject} - من الاتحاد المصري لكرة القدم` });
+  }
+  const ids = new Map<string, number>();
+  for (let round = 0; round < 12 && ids.size < subjectsToSend.length; round += 1) {
+    expect(await mailIntakePage.syncNow(), "'مزامنة الآن' should run the sync").toBeLessThan(400);
+    for (const subject of subjectsToSend.filter((candidate) => !ids.has(candidate))) {
+      const found = await adminApi.correspondenceIds('Triage', subject);
+      if (found.length) {
+        ids.set(subject, found[0]);
+      }
+    }
+    if (ids.size < subjectsToSend.length) {
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+    }
+  }
+  const missing = subjectsToSend.filter((subject) => !ids.has(subject));
+  if (missing.length) {
+    throw new Error(`MAIL_NOT_FETCHED: not in 'غير مصنّف' after 'مزامنة الآن' for 3 minutes: ${missing.join(' / ')}`);
+  }
+  return subjectsToSend.map((subject) => ids.get(subject) as number);
 };
 
 /** A correspondence registered as incoming and directed to an entity (the state 'قبول في الوارد' + 'توجيه داخلي' leave). */
@@ -326,8 +357,8 @@ test.describe('ACM-08 External Intake and Archiving', () => {
       await archivingPage.selectFolder(setup.subFolders.football);
       await expect(archivingPage.documentLinks.filter({ hasText: subject }), `in '${setup.subFolders.football}'`).toHaveCount(1);
       await archivingPage.openDocument(subject);
-      // Soft: the rest of the case (folder, index values) is still checked when the reference differs
-      await expect.soft(page.locator('main').getByText(/\b\d{4}\/\d+\/A\b/).first(), 'the archive reference YYYY/N/A').toBeVisible();
+      // No archive reference (YYYY/N/A) is checked: an archived document keeps the mail's own reference number
+      // (reviewer, 2026-11-17)
       for (const [label, value] of Object.entries(values)) {
         await expect(page.locator('main'), `the index value '${label}'`).toContainText(shownAs(value));
       }
@@ -377,12 +408,13 @@ test.describe('ACM-08 External Intake and Archiving', () => {
       await archivingPage.selectFolder(setup.subFolders.finance);
       await expect(archivingPage.documentLinks.filter({ hasText: subject }), `in '${setup.subFolders.finance}'`).toHaveCount(1);
       await archivingPage.openDocument(subject);
-      // Soft: the rest of the case (folder, index values) is still checked when the reference differs
-      await expect.soft(page.locator('main').getByText(/\b\d{4}\/\d+\/A\b/).first(), 'the archive reference YYYY/N/A').toBeVisible();
+      // No archive reference (YYYY/N/A) is checked: an archived document keeps the mail's own reference number
+      // (reviewer, 2026-11-17)
       for (const [label, value] of Object.entries(values)) {
         await expect(page.locator('main'), `the index value '${label}'`).toContainText(shownAs(value));
       }
-      for (const [label, value] of Object.entries(optionalValues)) {
+      // Only the values that cannot be on the page by chance: 'لا' is in many words, '12' in dates and numbers
+      for (const [label, value] of Object.entries(optionalValues).filter(([, candidate]) => !['لا', '12'].includes(candidate))) {
         await expect(page.locator('main'), `the optional '${label}' should be empty`).not.toContainText(shownAs(value));
       }
     });
@@ -418,18 +450,21 @@ test.describe('ACM-08 External Intake and Archiving', () => {
       return archivingPage.save();
     });
     await then(async () => {
-      // The portal names the empty mandatory fields in one message: "لم تُدخل قيمة في: رقم خطاب الجهة، ..." - unless the
-      // browser stops the save first on the empty mandatory date ("Please fill out this field." on that field only)
+      // Reviewer (2026-11-17): the form cannot be saved with the mandatory fields empty - that is the check. The portal
+      // names the empty fields in one message ("لم تُدخل قيمة في: ...") unless the browser stops the save first on the
+      // empty mandatory date ("Please fill out this field." on that field only): either way, only mandatory fields
       const { fields: missing, by } = await archivingPage.shownMissing();
       test.info().annotations.push({ type: 'messages', description: `${by}: ${missing.join('، ') || '(none)'}` });
-      expect([...missing].sort(), `a message for each of the 5 mandatory fields (shown by the ${by}: ${missing.join('، ') || 'none'})`).toEqual(
-        Object.keys(mandatoryValues('', '', '', '')).sort(),
-      );
+      expect(status, 'nothing should be archived').toBeUndefined();
+      await expect(archivingPage.dialog, 'the dialog stays open').toBeVisible();
+      expect(missing.length, 'the empty mandatory fields are pointed out').toBeGreaterThan(0);
+      const mandatory = Object.keys(mandatoryValues('', '', '', ''));
+      for (const label of missing) {
+        expect(mandatory, `'${label}' is pointed out as missing: only mandatory fields should be`).toContain(label);
+      }
       for (const label of Object.keys(optionalValues)) {
         expect(missing, `no message for the optional '${label}'`).not.toContain(label);
       }
-      expect(status, 'nothing should be archived').toBeUndefined();
-      await expect(archivingPage.dialog, 'the dialog stays open').toBeVisible();
     });
   });
 
@@ -475,13 +510,13 @@ test.describe('ACM-08 External Intake and Archiving', () => {
         }
       }
       expect(status, 'invalid values should not be archived').toBeUndefined();
-      if (kept.length) {
-        const messages = (await archivingPage.dialog.getByRole('alert').allInnerTexts()).join(' ');
-        test.info().annotations.push({ type: 'messages', description: messages || '(none)' });
-        for (const label of kept) {
-          // Soft: the list fields below are still checked
-          expect.soft(messages, `a validation message for '${label}'`).toContain(label);
-        }
+      // Each field shows its own message under it ("أدخل رقمًا صحيحًا.", "تاريخ غير صالح. ...", seen 2026-11-17); the
+      // alert above the buttons only lists the empty mandatory fields
+      for (const label of kept) {
+        const messages = await archivingPage.fieldMessages(label);
+        test.info().annotations.push({ type: 'messages', description: `${label}: ${messages.join(' | ') || '(none)'}` });
+        // Soft: the list fields below are still checked
+        expect.soft(messages.join(' '), `a validation message under '${label}'`).toMatch(/صحيح|غير صالح|رقم|تاريخ/);
       }
       expect(await archivingPage.optionsOf('تصنيف المراسلة')).toEqual(['طلب', 'إخطار', 'مطالبة']);
       expect(await archivingPage.optionsOf('درجة الأهمية')).toEqual(['عادي', 'مهم', 'عاجل']);
@@ -578,22 +613,57 @@ test.describe('ACM-08 External Intake and Archiving', () => {
     Then the email is not registered
     And it is recorded as excluded in 'سجل الاستلام'
     #Arabic: التحقق من استبعاد الإيميلات الواردة من العناوين المحجوبة
-  `), async ({ page, signIn, runId, mailIntakePage }) => {
-    const spammer = autoEmail(runId, 'spam-sender');
-    await given(async () => {
+  `), async ({ page, signIn, runId, adminApi, cleanup, mailIntakePage }) => {
+    // The blocked sender is the team's test inbox (it is the one that can send to the portal's mailbox)
+    if (!hasTestInbox()) {
+      blocked("an e-mail from an address in 'عناوين السبام' is excluded and logged in 'سجل الاستلام'", NO_TEST_INBOX);
+    }
+    const spammer = testInboxAddress();
+    const subject = autoName(runId, 'رسالة من عنوان محجوب');
+    // The list is a real setting, and the test inbox must stay allowed for the other cases: take the address out again
+    // (only it - the other addresses stay as they were)
+    cleanup(() => adminApi.removeSpamAddresses((address) => address.toLowerCase() === spammer.toLowerCase()));
+    purgeAfter(adminApi, runId, cleanup);
+    const portalMailbox = await given(async () => {
       await signIn('ADMIN');
       await mailIntakePage.open();
-      // 'عناوين السبام' of the first receiving mailbox: the list is the mailbox's own (not seen yet - a dialog with an
-      // address field and a save button is expected)
+      // 'عناوين السبام' of the first receiving mailbox: one textarea (#spam-addresses), one address per line - the
+      // address goes on a new line after the ones already there, so none of them is lost
       await page.getByRole('button', { name: 'عناوين السبام', exact: true }).first().click();
       const dialog = page.getByRole('dialog');
-      await dialog.getByRole('textbox').first().fill(spammer);
+      const list = dialog.locator('#spam-addresses');
+      const current = (await list.inputValue()).trim();
+      await list.fill(current ? `${current}\n${spammer}` : spammer);
       await dialog.getByRole('button', { name: /^(إضافة|حفظ)$/ }).first().click();
       await expect(dialog).toContainText(spammer);
+      return adminApi.receivingMailboxAddress();
     });
-    await then(() => {
-      blocked(`an e-mail from '${spammer}' is excluded and logged in 'سجل الاستلام'`, NO_TEST_INBOX);
-      return Promise.resolve();
+    const blockedCount = await when(async () => {
+      await sendFromTestInbox({ to: portalMailbox, subject, text: `${subject} - رسالة يجب استبعادها` });
+      // 'مزامنة الآن' until the sync reports a blocked message (Gmail may take a little while to deliver it)
+      let total = 0;
+      for (let round = 0; round < 10 && total === 0; round += 1) {
+        const sync = await mailIntakePage.syncNowCounts();
+        expect(sync.status, "'مزامنة الآن' should run the sync").toBeLessThan(400);
+        total += sync.messagesBlocked ?? 0;
+        if (total === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 15_000));
+        }
+      }
+      return total;
+    });
+    await then(async () => {
+      expect(blockedCount, `the sync should report the e-mail from '${spammer}' as blocked (waited about 2.5 minutes)`).toBeGreaterThan(0);
+      for (const folder of ['Triage', 'All', 'Register'] as const) {
+        expect(await adminApi.correspondenceIds(folder, subject), `the blocked e-mail should not be registered (${folder})`).toEqual([]);
+      }
+      // 'سجل الاستلام' keeps no subject or sender for a message it did not register: its 'النتيجة' filter is checked
+      await mailIntakePage.open();
+      // The portal's options, in its order (its script, 2026-11-17): all, ingested, rejected - the third is the excluded ones
+      const excluded = (await mailIntakePage.outcomeOptions())[2];
+      expect(excluded, "'النتيجة' of 'سجل الاستلام' should offer the excluded messages").toBeDefined();
+      await mailIntakePage.filterLedger({ outcome: excluded as string });
+      await expect(page.locator('main tbody tr').first(), 'the excluded message should be in the intake log').toBeVisible();
     });
   });
 
@@ -646,23 +716,28 @@ test.describe('ACM-08 External Intake and Archiving', () => {
     And the third email is visible to 'منى سعيد' only
     And the fourth email is visible to 'هشام رضا' only
     #Arabic: التحقق من توجيه أربع رسائل واردة للجهة الرئيسية وجهتين فرعيتين وشخص وظهور كل رسالة لأصحابها فقط
-  `), async ({ page, signIn, runId, adminApi, cleanup, registerPage, asAnotherUser }) => {
+  `), async ({ page, signIn, runId, adminApi, cleanup, registerPage, mailIntakePage, asAnotherUser }) => {
+    // 'توجيه داخلي' is offered only for an e-mail the mailbox fetched: the four e-mails are real, sent by the team's test
+    // inbox, whose address is the football association's in the address book (reviewer, 2026-11-17)
+    if (!hasTestInbox()) {
+      blocked('four e-mails from the football association fetched into غير مصنّف', NO_TEST_INBOX);
+    }
     const subjectsOf = ['للنادي الأهلي', 'لإدارة الكرة', 'لإدارة العضويات', 'لهشام رضا'].map((to) => autoName(runId, `بريد الاتحاد ${to}`));
-    const { club, ids } = await given(async () => {
+    const club = await given(async () => {
       // With users: 'توجيه داخلي' goes only to an active internal recipient (an entity or person with an active user) -
       // the server answers "Choose an active internal recipient." otherwise (seen live 2026-11-17)
-      const prepared = await createData('create the club with users and four e-mails in غير مصنّف', async () => {
-        const madeClub = await createClub(adminApi, runId, cleanup, { withUsers: true });
-        const efa = await createFootballAssociation(adminApi, runId, cleanup);
+      const madeClub = await createData('create the club with users and the football association with the test inbox address', async () => {
+        const made = await createClub(adminApi, runId, cleanup, { withUsers: true });
+        await createFootballAssociation(adminApi, runId, cleanup, { email: testInboxAddress() });
         purgeAfter(adminApi, runId, cleanup);
-        const made: number[] = [];
-        for (const subject of subjectsOf) {
-          made.push(await createUnclassifiedEmail(adminApi, subject, efa));
-        }
-        return { club: madeClub, ids: made };
+        return made;
       });
       await signIn('ADMIN');
-      return prepared;
+      return madeClub;
+    });
+    const ids = await given(async () => {
+      await mailIntakePage.open();
+      return createData('the four e-mails sent by the test inbox and fetched into غير مصنّف', () => receiveEmails(adminApi, mailIntakePage, subjectsOf));
     });
     const targets = [club.entityNames.main, club.entityNames.football, club.entityNames.members, club.person('هشام رضا').name];
     const routed = await when(async () => {
@@ -858,7 +933,9 @@ test.describe('ACM-08 External Intake and Archiving', () => {
     });
     await then(async () => {
       for (const folder of folders) {
-        await expect.soft(registerPage.row(subjectOf(folder)), `'الكل' shows the message of '${folder}'`).toHaveCount(1);
+        // Reviewer (2026-11-17): the admin sees every list's message - a message may be listed more than once in 'الكل'
+        // (one row per recipient: seen for the one in 'غير مصنّف'), so it is checked to be there, not counted
+        await expect.soft(registerPage.row(subjectOf(folder)).first(), `'الكل' shows the message of '${folder}'`).toBeVisible();
       }
       test.info().annotations.push({ type: 'note', description: "The messages are made through the API, which cannot attach files: 'the attachments open correctly' is not checked here (ACM-07-06 checks attachments)." });
     });

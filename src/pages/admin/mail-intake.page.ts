@@ -39,11 +39,27 @@ export class MailIntakePage extends BasePage {
 
   /** 'مزامنة الآن'; returns the server's answer status. */
   async syncNow(): Promise<number> {
-    const [response] = await Promise.all([
-      this.page.waitForResponse((answer) => answer.url().includes('/api/acm/settings/mail-ingestion') && answer.request().method() === 'POST', { timeout: acmTimeouts.pageLoad }),
-      this.syncNowButton.click(),
-    ]);
-    return answerStatus(response);
+    return (await this.syncNowCounts()).status;
+  }
+
+  /**
+   * 'مزامنة الآن' with the sync's counts (seen, already fetched, blocked as spam, documents made). A sync already running
+   * (the portal's own, every few minutes) is answered 409: it is waited for and 'مزامنة الآن' clicked again.
+   */
+  async syncNowCounts(): Promise<{ status: number; messagesSeen?: number; messagesBlocked?: number; documentsCreated?: number }> {
+    for (let attempt = 0; ; attempt += 1) {
+      const [response] = await Promise.all([
+        this.page.waitForResponse((answer) => answer.url().includes('/api/acm/settings/mail-ingestion/sync') && answer.request().method() === 'POST', { timeout: acmTimeouts.pageLoad }),
+        this.syncNowButton.click(),
+      ]);
+      const status = await answerStatus(response);
+      if (status === 409 && attempt < 6) {
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
+        continue;
+      }
+      const body = (await response.json().catch(() => ({}))) as { value?: { messagesSeen?: number; messagesBlocked?: number; documentsCreated?: number } };
+      return { status, ...body.value };
+    }
   }
 
   /** The cards of the receiving mailboxes. */
@@ -86,6 +102,11 @@ export class MailIntakePage extends BasePage {
 
   /** Adds a recipient of 'ملخص السجل اليومي' and saves the list. */
   async addSummaryRecipient(email: string): Promise<void> {
+    // Already listed (the portal refuses a second one and 'حفظ العناوين' stays disabled): nothing to add
+    await expect(this.summarySection().getByRole('listitem').first()).toBeVisible({ timeout: acmTimeouts.pageLoad }).catch(() => undefined);
+    if (await this.summarySection().getByText(email, { exact: true }).count()) {
+      return;
+    }
     await this.summaryAddress.fill(email);
     await this.addAddressButton.click();
     await expect(this.page.locator('main')).toContainText(email);
