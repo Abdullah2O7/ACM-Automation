@@ -3,6 +3,7 @@ import { given, scenario, then, when } from '../../../src/utils/core/scenario-te
 import { createData } from '../../../src/utils/core/setup-step';
 import { answerStatus } from '../../../src/utils/core/answer-status';
 import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
+import { hasTestInbox, testInboxAddress, waitForTestInboxMail } from '../../../src/utils/mail/test-inbox';
 import { autoName } from '../../../src/domain/acm-names';
 import { AcmApi } from '../../../src/api/acm-api';
 import { addDays, formatDate, today } from '../../../src/utils/core/dates';
@@ -64,15 +65,34 @@ test.describe('ACM-15 Reports and Audit Log', () => {
     Then the report shows data consistent with the system records
     #Arabic: التحقق من صحة بيانات تقارير معدل التشغيل وتتبع المستند ونشاط المستخدم ومؤشرات المديرين
   `), async ({ signIn, runId, adminApi, cleanup, reportsPage }) => {
-    const documentId = await given(async () => {
-      const id = await createData('register a record to trace', async () => {
-        const efa = await createFootballAssociation(adminApi, runId, cleanup);
+    // The case's own entity gets 2 incoming and 1 outgoing letters today: 'معدل التشغيل' must count exactly those for it
+    const { documentId, efa } = await given(async () => {
+      const prepared = await createData('register 2 incoming and 1 outgoing letters for the case entity', async () => {
+        const entity = await createFootballAssociation(adminApi, runId, cleanup);
         cleanup(() => adminApi.purgeCorrespondenceMatching(runId));
-        return adminApi.sendCorrespondence({ subject: autoName(runId, 'مستند للتتبع'), directionId: directions.outgoing.id, typeId: documentTypes.letter.id, recipients: [efa] });
+        for (const index of [1, 2]) {
+          await adminApi.sendCorrespondence({ subject: autoName(runId, `وارد للتقرير ${index}`), directionId: directions.incoming.id, typeId: documentTypes.letter.id, recipients: [entity] });
+        }
+        const id = await adminApi.sendCorrespondence({ subject: autoName(runId, 'مستند للتتبع'), directionId: directions.outgoing.id, typeId: documentTypes.letter.id, recipients: [entity] });
+        return { documentId: id, efa: entity };
       });
       await signIn('ADMIN');
       await reportsPage.open();
-      return id;
+      return prepared;
+    });
+    const counts = await when(async () => {
+      await reportsPage.chooseReport(reports.throughput);
+      await reportsPage.chooseFormat('إكسل');
+      await reportsPage.period(day(0), day(0));
+      return reportsPage.throughputRow(await reportsPage.download(), efa.name);
+    });
+    await then(() => {
+      test.info().annotations.push({ type: 'report', description: `'${reports.throughput}' for '${efa.name}': ${JSON.stringify(counts)}` });
+      expect(counts, `'${reports.throughput}' should list '${efa.name}'`).toBeDefined();
+      expect.soft(counts?.['وارد عام'], `'${reports.throughput}': 'وارد عام' of '${efa.name}' (2 incoming letters registered today)`).toBe(2);
+      expect.soft(counts?.['صادر عام'], `'${reports.throughput}': 'صادر عام' of '${efa.name}' (1 outgoing letter registered today)`).toBe(1);
+      expect.soft(counts?.['الإجمالي'], `'${reports.throughput}': 'الإجمالي' of '${efa.name}'`).toBe(3);
+      return Promise.resolve();
     });
     for (const report of [reports.throughput, reports.documentTrail, reports.managerKpis]) {
       await when(async () => {
@@ -142,8 +162,15 @@ test.describe('ACM-15 Reports and Audit Log', () => {
       await signIn('ADMIN');
       await mailIntakePage.open();
       await mailIntakePage.addSummaryRecipient(user.email);
+      // The team's test inbox is a recipient too (removed after the case), so the e-mail itself can be checked
+      if (hasTestInbox()) {
+        cleanup(() => adminApi.removeSummaryRecipient(testInboxAddress()));
+        await mailIntakePage.open();
+        await mailIntakePage.addSummaryRecipient(testInboxAddress());
+      }
       return user;
     });
+    const since = new Date();
     // The page does not show the last run: it is read from the settings the page loads
     const before = await adminApi.dailySummaryLastRun();
     await when(async () => {
@@ -160,8 +187,14 @@ test.describe('ACM-15 Reports and Audit Log', () => {
       const other = await asAnotherUser({ username: member.userName, password: member.password });
       await other.appShell.open('/tasks');
       const notifications = await other.appShell.openNotifications();
-      await expect(notifications, 'a recipient with a system account gets an in-portal notification').toContainText(/ملخص/);
-      blocked('the recipients receive the summary e-mail', NO_TEST_INBOX);
+      await expect.soft(notifications, 'a recipient with a system account gets an in-portal notification').toContainText(/ملخص/);
+      if (!hasTestInbox()) {
+        blocked('the recipients receive the summary e-mail', NO_TEST_INBOX);
+      }
+      const mail = await waitForTestInboxMail(/ملخص/, { since, timeout: 180_000 });
+      test.info().annotations.push({ type: 'last run', description: JSON.stringify(await adminApi.dailySummaryLastRun()) });
+      expect(mail, "the summary e-mail should reach the recipient (the test inbox) after 'إرسال الآن'").toBeDefined();
+      test.info().annotations.push({ type: 'received', description: `'${mail?.subject}' in ${mail?.folder}, attachments: ${mail?.attachments.join(', ') || 'none'}` });
     });
   });
 

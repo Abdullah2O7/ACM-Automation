@@ -650,6 +650,16 @@ export class AcmApi {
 
   // ----------------------------------------------------- Settings ---------------------------------------------------
 
+  /** The address of the portal's receiving mailbox ('استقبال البريد', the first one switched on). */
+  async receivingMailboxAddress(): Promise<string> {
+    const mailboxes = await this.call<{ userName: string; isEnabled: boolean; protocol: string }[]>('GET', '/settings/mail-ingestion');
+    const receiving = mailboxes.find((mailbox) => mailbox.isEnabled && mailbox.userName.includes('@'));
+    if (!receiving) {
+      throw new Error('NO_RECEIVING_MAILBOX: no mailbox of \'استقبال البريد\' is switched on.');
+    }
+    return receiving.userName;
+  }
+
   /** Removes every receiving mailbox whose user starts with the given text (the tests' own: auto-test-...). */
   async deleteMailboxes(userNamePrefix: string): Promise<void> {
     const mailboxes = await this.call<{ mailIngestionSettingId: number; userName: string }[]>('GET', '/settings/mail-ingestion');

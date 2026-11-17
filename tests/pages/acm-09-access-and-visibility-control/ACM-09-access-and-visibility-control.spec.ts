@@ -5,7 +5,7 @@ import { autoName } from '../../../src/domain/acm-names';
 import { AcmApi } from '../../../src/api/acm-api';
 import { credentialsOf } from '../../../src/config/auth-state';
 import { createClub, createFootballAssociation, credentialsOfPerson, type Club } from '../../../src/fixtures/club';
-import { expectDoesNotSee, expectReceived, expectSeesInRegister } from '../../../src/fixtures/visibility';
+import { expectDoesNotSee, expectReceived, expectSeesInRegister, expectAdminSees } from '../../../src/fixtures/visibility';
 import { directions, documentTypes, subjects } from '../../../test-data/acm/acm.data';
 
 //========================================================================
@@ -67,7 +67,8 @@ test.describe('ACM-09 Access and Visibility Control', () => {
     await then(() => expectReceived(karim, subject, 'كريم حسن'));
     for (const name of ['عمرو فتحي', 'محمد عادل', 'منى سعيد', 'هشام رضا', 'admin']) {
       const other = await when(() => asAnotherUser(name === 'admin' ? credentialsOf('ADMIN') : credentialsOfPerson(club.person(name))));
-      await then(() => expectDoesNotSee(other, documentId, subject, name));
+      // The admin views all mails (business rule, reviewer 2026-11-17); the others must not see it
+      await then(() => (name === 'admin' ? expectAdminSees(other, subject) : expectDoesNotSee(other, documentId, subject, name)));
     }
     test.info().annotations.push({ type: 'note', description: 'Counters are not compared here: they count every record of the shared portal, so one record more or less cannot be told apart reliably.' });
   });
@@ -114,7 +115,8 @@ test.describe('ACM-09 Access and Visibility Control', () => {
     );
     for (const name of ['محمد عادل', 'كريم حسن', 'عمرو فتحي', 'هشام رضا']) {
       const other = await when(() => asAnotherUser(credentialsOfPerson(club.person(name))));
-      await then(() => expectDoesNotSee(other, documentId, subject, name));
+      // The admin views all mails (business rule, reviewer 2026-11-17); the others must not see it
+      await then(() => (name === 'admin' ? expectAdminSees(other, subject) : expectDoesNotSee(other, documentId, subject, name)));
     }
   });
 
@@ -153,7 +155,7 @@ test.describe('ACM-09 Access and Visibility Control', () => {
   `), async ({ runId, adminApi, cleanup, newUser, asAnotherUser }) => {
     const toEntity = autoName(runId, subjects.playersList);
     const toPerson = autoName(runId, subjects.coachReport);
-    const personMailId = await given(() =>
+    await given(() =>
       createData('create the club and the two mails', async () => {
         const madeClub = await createClub(adminApi, runId, cleanup);
         const author = await newUser();
@@ -165,7 +167,8 @@ test.describe('ACM-09 Access and Visibility Control', () => {
     const admin = await when(() => asAnotherUser(credentialsOf('ADMIN')));
     await then(async () => {
       await expectSeesInRegister(admin, 'Inbox', toEntity, 'the admin');
-      await expectDoesNotSee(admin, personMailId, toPerson, 'the admin');
+      // The admin views all mails, the person's too (business rule, reviewer 2026-11-17)
+      await expectAdminSees(admin, toPerson);
     });
   });
 });

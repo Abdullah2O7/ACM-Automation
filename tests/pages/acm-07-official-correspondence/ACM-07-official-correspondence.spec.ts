@@ -347,20 +347,24 @@ test.describe('ACM-07 Official Correspondence', () => {
     Then the system shows a clear message that the entity has no email address
     And the external sending is not reported as successful
     #Arabic: التحقق من التعامل مع إرسال بريد إلكتروني لجهة بدون عنوان بريد
-  `), async ({ page, signIn, runId, adminApi, cleanup, correspondenceForm }) => {
-    const subject = autoName(runId, 'بريد لجهة بلا عنوان');
-    await given(async () => {
-      const efa = await createData('create the football association without an e-mail', () => createFootballAssociation(adminApi, runId, cleanup, { email: null }));
+  `), async ({ signIn, runId, adminApi, cleanup, correspondenceForm }) => {
+    // Confirmed behaviour (reviewer, 2026-11-17): for an e-mail correspondence, an entity without an e-mail address is
+    // not offered in 'الجهة المستقبِلة' - so it cannot be sent to at all, and nothing is reported as sent
+    const efa = await given(async () => {
+      const entity = await createData('create the football association without an e-mail', () => createFootballAssociation(adminApi, runId, cleanup, { email: null }));
       cleanup(() => adminApi.purgeCorrespondenceMatching(runId));
       await signIn('ADMIN');
       await correspondenceForm.open();
-      await correspondenceForm.fillRegister({ direction: directions.outgoing.label, type: documentTypes.email.label, correspondent: efa.name, subject, body: subject });
+      return entity;
     });
-    const sent = await when(() => correspondenceForm.send());
+    const offered = await when(async () => {
+      await correspondenceForm.chooseDirection(directions.outgoing.label);
+      await correspondenceForm.chooseType(documentTypes.email.label);
+      return correspondenceForm.offersRecipient(efa.name);
+    });
     await then(async () => {
-      await expect(page.getByText(/لا يوجد.*بريد|ليس لها.*بريد|بدون.*بريد|عنوان بريد/).first(), 'a message that the entity has no e-mail address').toBeVisible();
-      await expect(page.getByText('تم الإرسال الخارجي'), 'the external sending should not be reported as done').toHaveCount(0);
-      test.info().annotations.push({ type: 'server answer', description: `${sent.status} ${sent.error ?? ''}` });
+      expect(offered, `'${efa.name}' (no e-mail address) should not be offered for an e-mail correspondence`).toBe(false);
+      expect(await adminApi.correspondenceIds('All', runId), 'nothing should be sent').toEqual([]);
     });
   });
   test(...scenario('ACM-07-11', `

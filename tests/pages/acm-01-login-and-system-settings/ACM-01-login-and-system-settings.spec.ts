@@ -3,6 +3,7 @@ import { given, scenario, then, when } from '../../../src/utils/core/scenario-te
 import { asSetup } from '../../../src/utils/core/setup-step';
 import { autoName } from '../../../src/domain/acm-names';
 import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
+import { hasTestInbox, testInboxAddress, waitForTestInboxMail } from '../../../src/utils/mail/test-inbox';
 import { keptLookupValues, languages, lookupTables, mailboxStatus, messages, routes } from '../../../test-data/acm/acm.data';
 
 /** A lookup value of the case's own: a Latin code (AT + run id) and labels prefixed auto-test-. */
@@ -45,11 +46,14 @@ test.describe('ACM-01 Login and System Settings', () => {
       return created;
     });
     await when(() => loginPage.signIn(user.userName, user.password));
+    // The portal's dashboard is hidden (team decision 2026-11-16): a signed-in user lands on 'البريد الداخلي'. The header
+    // shows the full name and the user name, not the role - accepted by the reviewer (2026-11-16, expected: passed).
     await then(async () => {
-      await expect(page).toHaveURL(/\/$/);
       await appShell.expectSignedIn();
-      await expect(appShell.accountButton, 'the header should show the user name').toContainText(user.fullName);
-      await expect(appShell.accountButton, `the header should show the role '${user.roleName}'`).toContainText(user.roleName);
+      await expect(page, "the user lands on 'البريد الداخلي'").toHaveURL(/\/correspondence\/mailbox/);
+      await expect(appShell.accountButton, 'the header should show the full name').toContainText(user.fullName);
+      await expect(appShell.accountButton, 'the header should show the user name').toContainText(user.userName);
+      test.info().annotations.push({ type: 'note', description: 'The header shows the full name and user name; the role is not shown (accepted by the reviewer).' });
     });
   });
 
@@ -351,10 +355,24 @@ test.describe('ACM-01 Login and System Settings', () => {
         await expect(page.locator(id), `'${label}'`).toBeVisible();
       }
       await expect(page.locator('#dispatch-password'), 'the password is never shown').toHaveValue('');
-      await expect(settingsPage.smtpTestButton, "'إرسال بريد اختبار'").toBeVisible();
-      test.info().annotations.push({ type: 'smtp', description: `'تفعيل الإرسال الخارجي' is ${(await settingsPage.smtpEnabled.isChecked()) ? 'on' : 'off'}; 'إرسال بريد اختبار' is ${(await settingsPage.smtpTestButton.isEnabled()) ? 'enabled' : 'disabled'}` });
+      await expect(settingsPage.smtpEnabled, "'تفعيل الإرسال الخارجي' should be on").toBeChecked();
+      for (const id of ['#dispatch-host', '#dispatch-fromAddress', '#dispatch-userName']) {
+        await expect(page.locator(id), `${id} should hold the saved value`).not.toHaveValue('');
+      }
+    });
+    // 'إرسال بريد اختبار' to the test inbox: it only sends (POST /settings/dispatch/test), nothing is saved
+    if (!hasTestInbox()) {
+      blocked('the test e-mail is received', NO_TEST_INBOX);
+    }
+    const since = new Date();
+    const sent = await when(() => settingsPage.sendSmtpTest(testInboxAddress()));
+    await then(async () => {
+      expect(sent.status, `'إرسال بريد اختبار' should be accepted: ${sent.message}`).toBeLessThan(300);
+      const mail = await waitForTestInboxMail(/ACM SMTP test/i, { since });
+      expect(mail, 'the test e-mail should reach the test inbox').toBeDefined();
+      test.info().annotations.push({ type: 'received', description: `'${mail?.subject}' in ${mail?.folder}` });
       expect(stopped, 'no setting should have been saved').toEqual([]);
-      blocked('saving the SMTP settings and receiving the test e-mail', `the shared SMTP settings must not be changed (team decision 2026-11-17), and ${NO_TEST_INBOX}`);
+      test.info().annotations.push({ type: 'note', description: "Read-only (team decision 2026-11-17): the saved SMTP settings were checked and used as they are - 'حفظ' was not clicked." });
     });
   });
 });

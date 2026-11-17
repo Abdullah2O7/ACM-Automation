@@ -373,7 +373,8 @@ test.describe('ACM-05 Users and Permissions', () => {
         await appShell.open(screen.route);
         await expect
           .poll(
-            async () => !new URL(page.url()).pathname.startsWith(screen.route) || (await page.getByText(/غير مصرح|لا تملك|ليس لديك|صلاحية|403/).first().isVisible()),
+            async () => !new URL(page.url()).pathname.startsWith(screen.route) || // The portal's refusal (reviewer, 2026-11-17): "لا تملك صلاحية الوصول إلى هذه الشاشة"
+              (await page.getByText(/لا تملك صلاحية الوصول|غير مصرح|ليس لديك صلاحية|403/).first().isVisible()),
             { message: `'${screen.link}' (${screen.route}) should be blocked by direct URL` },
           )
           .toBe(true);

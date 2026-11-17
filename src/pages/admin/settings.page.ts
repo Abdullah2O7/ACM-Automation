@@ -59,7 +59,9 @@ export class SettingsPage extends BasePage {
     const stopped: string[] = [];
     await this.page.route(/\/api\/acm\/.*(settings|mailbox)/i, async (route) => {
       const request = route.request();
-      if (['GET', 'OPTIONS'].includes(request.method()) || /\/correspondence\//.test(request.url())) {
+      // 'إرسال بريد اختبار' (POST /settings/dispatch/test {email}) only sends a message: it saves nothing
+      const sendsTestMail = request.method() === 'POST' && /\/settings\/dispatch\/test$/.test(new URL(request.url()).pathname);
+      if (['GET', 'OPTIONS'].includes(request.method()) || sendsTestMail || /\/correspondence\//.test(request.url())) {
         return route.fallback();
       }
       stopped.push(`${request.method()} ${new URL(request.url()).pathname}`);

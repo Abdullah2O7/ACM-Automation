@@ -77,6 +77,19 @@ export class CorrespondenceFormPage extends BasePage {
     await expect(this.type).toHaveText(label);
   }
 
+  /** Whether a recipient picker offers an entry: searches it by name and closes the picker again. */
+  async offersRecipient(name: string, picker: Locator = this.correspondent): Promise<boolean> {
+    await picker.click();
+    await this.pickerSearch.fill(name);
+    // Let the search answer before reading the options
+    await this.page.waitForResponse((answer) => /\/api\/acm\/addressbook/.test(answer.url()), { timeout: 5_000 }).catch(() => undefined);
+    // Wait a few seconds for the entry to be listed; not listed by then means not offered
+    const option = this.page.getByRole('option').filter({ hasText: new RegExp(`^\\s*${escapeRegExp(name)}`) });
+    const offered = await option.first().waitFor({ timeout: 3_000 }).then(() => true).catch(() => false);
+    await this.page.keyboard.press('Escape');
+    return offered;
+  }
+
   /** Picks an address book entry in a recipient picker (the register's party, or 'إلى' of an internal message). */
   async pickRecipient(name: string, picker: Locator = this.correspondent): Promise<void> {
     await picker.click();

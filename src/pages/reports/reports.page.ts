@@ -1,4 +1,5 @@
 import type { Download, Page } from '@playwright/test';
+import ExcelJS from 'exceljs';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
 import { acmTimeouts } from '../../config/timeouts';
@@ -71,6 +72,28 @@ export class ReportsPage extends BasePage {
     const response = this.page.waitForResponse((answer) => answer.url().includes('/api/acm/reports/user-activity'), { timeout: 15_000 }).catch(() => undefined);
     await this.page.getByRole('button', { name: 'عرض النشاط', exact: true }).click();
     return (await response)?.status();
+  }
+
+  /**
+   * The row of an entity in a downloaded 'معدل التشغيل' Excel file (seen live 2026-11-17: a sheet 'معدل التشغيل', the
+   * period on row 1, the header on row 3 - م, الجهة, وارد عام, صادر عام, مراسلات واردة, مراسلات صادرة, الإجمالي - then one
+   * row per entity). Returns the figures by column name, or undefined when the entity is not listed.
+   */
+  async throughputRow(download: Download, entity: string): Promise<Record<string, number> | undefined> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(await download.path());
+    const sheet = workbook.worksheets[0];
+    let header: string[] = [];
+    let found: Record<string, number> | undefined;
+    sheet.eachRow((row) => {
+      const cells = (row.values as unknown[]).slice(1).map((cell) => (cell === null || cell === undefined ? '' : String(cell).trim()));
+      if (cells.includes('الجهة')) {
+        header = cells;
+      } else if (header.length && cells[header.indexOf('الجهة')] === entity) {
+        found = Object.fromEntries(header.map((name, index) => [name, Number(cells[index])]).filter(([name]) => name && name !== 'الجهة' && name !== 'م'));
+      }
+    });
+    return found;
   }
 
   async download(): Promise<Download> {

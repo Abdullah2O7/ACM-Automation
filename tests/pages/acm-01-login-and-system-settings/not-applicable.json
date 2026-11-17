@@ -1,4 +1,3 @@
 {
-  "ACM-01-01": "The portal's dashboard ('اللوحة الرئيسية') has been hidden (team decision, 2026-11-16): the case's 'redirected to the dashboard' step no longer applies. Seen before: the header shows the full name and user name but not the role.",
   "ACM-01-07": "Removed from the automated run at the team's request (2026-11-16): it changes the portal-wide identity and logo of the shared environment."
 }

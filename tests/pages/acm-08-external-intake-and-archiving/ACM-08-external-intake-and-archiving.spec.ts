@@ -10,6 +10,8 @@ import { createClub, useKeptArchive, createFootballAssociation, credentialsOfPer
 import type { RegisterPage } from '../../../src/pages/register/register.page';
 import type { ArchivingPage } from '../../../src/pages/archive/archiving.page';
 import { expectDoesNotSee, expectReceived } from '../../../src/fixtures/visibility';
+import { hasTestInbox, sendFromTestInbox, testInboxAddress } from '../../../src/utils/mail/test-inbox';
+import { writeTestFile } from '../../../src/utils/core/test-files';
 import { directions, documentTypes, referencePattern, registryName, subjects } from '../../../test-data/acm/acm.data';
 
 //========================================================================
@@ -163,18 +165,42 @@ test.describe('ACM-08 External Intake and Archiving', () => {
     Then the email appears in 'غير مصنّف' with the sender, subject and body
     And the attachment 'قائمة_اللاعبين_المقيدين.pdf' opens correctly
     #Arabic: التحقق من وصول بريد الاتحاد المصري لكرة القدم إلى قائمة غير مصنّف بالمرفق سليم
-  `), async ({ signIn, mailIntakePage }) => {
-    await given(async () => {
+  `), async ({ signIn, runId, adminApi, cleanup, mailIntakePage, registerPage }, testInfo) => {
+    // The football association is played by the team's test inbox (team decision 2026-11-17): it sends the e-mail from
+    // its own address to the portal's receiving mailbox
+    if (!hasTestInbox()) {
+      blocked("an e-mail sent by 'الاتحاد المصري لكرة القدم' arrives in 'غير مصنّف' with its attachment", NO_TEST_INBOX);
+    }
+    const subject = autoName(runId, subjects.playersList);
+    const attachment = writeTestFile(testInfo.outputPath('attachments'), 'قائمة_اللاعبين_المقيدين', 'pdf', 120 * 1024);
+    const portalMailbox = await given(async () => {
+      await createData('the football association with the test inbox address', () => createFootballAssociation(adminApi, runId, cleanup, { email: testInboxAddress() }));
+      purgeAfter(adminApi, runId, cleanup);
       await signIn('ADMIN');
       await mailIntakePage.open();
       await expect(mailIntakePage.mailboxCards().filter({ hasText: 'يستقبل' }).first(), "a system mailbox with the status 'يستقبل'").toBeVisible();
+      return adminApi.receivingMailboxAddress();
     });
-    await when(async () => {
-      expect(await mailIntakePage.syncNow(), "'مزامنة الآن' should run the sync").toBeLessThan(400);
+    const documentId = await when(async () => {
+      await sendFromTestInbox({ to: portalMailbox, subject, text: `${subject} - مرفق قائمة اللاعبين المقيدين`, attachments: [{ filename: 'قائمة_اللاعبين_المقيدين.pdf', path: attachment }] });
+      // 'مزامنة الآن' until the e-mail is fetched (Gmail may take a little while to deliver it)
+      for (let round = 0; round < 12; round += 1) {
+        expect(await mailIntakePage.syncNow(), "'مزامنة الآن' should run the sync").toBeLessThan(400);
+        const found = await adminApi.correspondenceIds('Triage', subject);
+        if (found.length) {
+          return found[0];
+        }
+        await new Promise((resolve) => setTimeout(resolve, 15_000));
+      }
+      return undefined;
     });
-    await then(() => {
-      blocked("an e-mail sent by 'الاتحاد المصري لكرة القدم' arrives in 'غير مصنّف' with its attachment", NO_TEST_INBOX);
-      return Promise.resolve();
+    await then(async () => {
+      expect(documentId, `the e-mail '${subject}' sent to ${portalMailbox} should arrive in 'غير مصنّف' after 'مزامنة الآن' (waited 3 minutes)`).toBeDefined();
+      await registerPage.openRecord('Triage', documentId as number);
+      await expect(registerPage.details, 'the subject').toContainText(subject);
+      await expect(registerPage.details, 'the sender').toContainText(testInboxAddress());
+      await expect(registerPage.details, 'the body').toContainText('مرفق قائمة اللاعبين المقيدين');
+      await expect(registerPage.details.getByText('قائمة_اللاعبين_المقيدين').first(), 'the attachment').toBeVisible();
     });
   });
 

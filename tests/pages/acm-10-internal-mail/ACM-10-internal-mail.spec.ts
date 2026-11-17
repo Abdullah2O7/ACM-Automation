@@ -4,7 +4,7 @@ import { createData } from '../../../src/utils/core/setup-step';
 import { autoName } from '../../../src/domain/acm-names';
 import { credentialsOf } from '../../../src/config/auth-state';
 import { createClub, credentialsOfPerson } from '../../../src/fixtures/club';
-import { expectDoesNotSee, expectSeesInMailbox } from '../../../src/fixtures/visibility';
+import { expectDoesNotSee, expectSeesInMailbox, expectAdminSees } from '../../../src/fixtures/visibility';
 import { mailboxFolders, subjects } from '../../../test-data/acm/acm.data';
 
 //========================================================================
@@ -64,7 +64,8 @@ test.describe('ACM-10 Internal Mail', () => {
     });
     for (const name of ['عمرو فتحي', 'محمد عادل', 'admin']) {
       const other = await when(() => asAnotherUser(name === 'admin' ? credentialsOf('ADMIN') : credentialsOfPerson(club.person(name))));
-      await then(() => expectDoesNotSee(other, documentId, subject, name));
+      // The admin views all mails (business rule, reviewer 2026-11-17); the others must not see it
+      await then(() => (name === 'admin' ? expectAdminSees(other, subject) : expectDoesNotSee(other, documentId, subject, name)));
     }
     test.info().annotations.push({ type: 'note', description: "'التقارير' are not searched here: the registers report official correspondence, not internal mail." });
   });
@@ -237,7 +238,8 @@ test.describe('ACM-10 Internal Mail', () => {
     });
     for (const name of ['محمد عادل', 'منى سعيد', 'هشام رضا', 'admin']) {
       const other = await when(() => asAnotherUser(name === 'admin' ? credentialsOf('ADMIN') : credentialsOfPerson(club.person(name))));
-      await then(() => expectDoesNotSee(other, documentId, subject, name));
+      // The admin views all mails (business rule, reviewer 2026-11-17); the others must not see it
+      await then(() => (name === 'admin' ? expectAdminSees(other, subject) : expectDoesNotSee(other, documentId, subject, name)));
     }
   });
 });

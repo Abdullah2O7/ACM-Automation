@@ -51,3 +51,13 @@ export const expectDoesNotSee = async (user: OtherUser, documentId: number, subj
   await user.page.waitForLoadState('networkidle').catch(() => undefined);
   await expect(user.page.locator('main'), `${who} should be denied '${subject}' by its address`).not.toContainText(subject);
 };
+
+/**
+ * The admin sees every mail (business rule confirmed by the reviewer, 2026-11-17: "the admin will be able to view all
+ * mails") - in the register's 'الكل'. At least one row: the same record may be listed twice (see ACM-08-16).
+ */
+export const expectAdminSees = async (admin: OtherUser, subject: string): Promise<void> => {
+  await admin.registerPage.openFolder('All');
+  await admin.registerPage.search(subject);
+  await expect(admin.registerPage.row(subject).first(), `'${subject}' should be visible to the admin (who views all mails)`).toBeVisible();
+};
