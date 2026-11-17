@@ -50,6 +50,59 @@ export class SettingsPage extends BasePage {
       .last();
   }
 
+  /**
+   * Read-only mode (team decision 2026-11-17: the cases must not change the portal's settings): every request that would
+   * write a setting (any non-GET call under /api/acm/settings or to a mailbox) is stopped before it reaches the server.
+   * Returns the list of what was stopped, to check it stays empty.
+   */
+  async blockSettingsWrites(): Promise<string[]> {
+    const stopped: string[] = [];
+    await this.page.route(/\/api\/acm\/.*(settings|mailbox)/i, async (route) => {
+      const request = route.request();
+      if (['GET', 'OPTIONS'].includes(request.method()) || /\/correspondence\//.test(request.url())) {
+        return route.fallback();
+      }
+      stopped.push(`${request.method()} ${new URL(request.url()).pathname}`);
+      return route.abort();
+    });
+    return stopped;
+  }
+
+  /**
+   * The mailbox cards of 'استقبال البريد': the blocks with one 'تعديل' and the password line ('كلمة مرور التطبيق') -
+   * the blocks around several cards hold more than one 'تعديل', and blocks inside a card lack one of the two.
+   */
+  mailboxCards(): Locator {
+    const edit = this.page.getByRole('button', { name: 'تعديل', exact: true });
+    const withCard = this.page.locator('div').filter({ hasText: 'كلمة مرور التطبيق' }).filter({ has: edit });
+    // `has` / `hasNot` look inside each block: a card holds no smaller card-like block
+    return this.page.locator('main div').filter({ hasText: 'كلمة مرور التطبيق' }).filter({ has: edit }).filter({ hasNot: withCard });
+  }
+
+  /** Opens 'إضافة صندوق بريد', checks its fields, types a mailbox and leaves with 'إلغاء' - nothing is saved. */
+  async tryMailboxFormWithoutSaving(mailbox: { host: string; port: number; userName: string; appPassword: string }): Promise<void> {
+    await this.addMailboxButton.click();
+    await expect(this.dialog.locator('#protocol')).toHaveText('IMAP');
+    await this.dialog.locator('#host').fill(mailbox.host);
+    await this.dialog.locator('#port').fill(String(mailbox.port));
+    await this.dialog.locator('#userName').fill(mailbox.userName);
+    await this.dialog.locator('#appPassword').fill(mailbox.appPassword);
+    await expect(this.dialog.locator('button[type="submit"]')).toBeVisible();
+    await this.dialog.getByRole('button', { name: 'إلغاء' }).click();
+    await expect(this.dialog).toBeHidden();
+  }
+
+  /** Opens 'تعديل' of a mailbox card, reads its 'كلمة مرور التطبيق' field and leaves with 'إلغاء'. */
+  async appPasswordShownWhenEditingCard(card: Locator): Promise<string> {
+    await card.getByRole('button', { name: 'تعديل', exact: true }).click();
+    const field = this.dialog.locator('#appPassword');
+    await expect(field).toBeVisible();
+    const shown = await field.inputValue();
+    await this.dialog.getByRole('button', { name: 'إلغاء' }).click();
+    await expect(this.dialog).toBeHidden();
+    return shown;
+  }
+
   /** Opens 'تعديل' of a mailbox and gives the value its 'كلمة مرور التطبيق' field shows. */
   async appPasswordShownWhenEditing(userName: string): Promise<string> {
     await this.mailboxCard(userName).getByRole('button', { name: 'تعديل', exact: true }).click();

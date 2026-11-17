@@ -1,7 +1,7 @@
 import { expect, test } from '../../../src/fixtures/acm.fixture';
 import { given, scenario, then, when } from '../../../src/utils/core/scenario-test';
 import { asSetup } from '../../../src/utils/core/setup-step';
-import { autoEmail, autoName } from '../../../src/domain/acm-names';
+import { autoName } from '../../../src/domain/acm-names';
 import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
 import { keptLookupValues, languages, lookupTables, mailboxStatus, messages, routes } from '../../../test-data/acm/acm.data';
 
@@ -295,26 +295,28 @@ test.describe('ACM-01 Login and System Settings', () => {
     Then the mailbox is saved with status 'يستقبل'
     And the password is never displayed again, only 'saved' status
     #Arabic: التحقق من إضافة صندوق بريد IMAP واتصاله وعدم عرض كلمة المرور
-  `), async ({ page, signIn, runId, adminApi, cleanup, settingsPage }) => {
-    // A mailbox of the case's own on a server that does not exist (team decision: no real inbox; whether the service
-    // really connects to a mail server is not checked here - see the hand-over)
-    const mailbox = { host: 'auto-test.invalid', port: 993, userName: `${autoName(runId, 'mailbox')}@example.com`, appPassword: `Auto#${runId}` };
-    await given(async () => {
+  `), async ({ page, signIn, runId, settingsPage }) => {
+    // Read-only (team decision 2026-11-17): the portal's settings must not be changed. The form is filled and left with
+    // 'إلغاء'; what a saved mailbox shows is checked on the mailbox already configured. Any settings save is stopped.
+    const typed = { host: 'auto-test.invalid', port: 993, userName: `${autoName(runId, 'mailbox')}@example.com`, appPassword: `Auto#${runId}` };
+    const stopped = await given(async () => {
       await signIn('ADMIN');
+      const guard = await settingsPage.blockSettingsWrites();
       await settingsPage.open();
+      return guard;
     });
-    await when(async () => {
-      cleanup(() => adminApi.deleteMailboxes(mailbox.userName));
-      await settingsPage.addMailbox(mailbox);
-    });
+    await when(() => settingsPage.tryMailboxFormWithoutSaving(typed));
     await then(async () => {
-      await settingsPage.open();
-      const card = settingsPage.mailboxCard(mailbox.userName);
+      const cards = settingsPage.mailboxCards();
+      await expect(cards.first(), 'a configured mailbox').toBeVisible();
+      const receiving = cards.filter({ hasText: mailboxStatus.receiving }).first();
+      await expect(receiving, `a configured mailbox with the status '${mailboxStatus.receiving}'`).toBeVisible();
       // The password is never shown again, only that one is saved
-      await expect(card).toContainText(messages.appPasswordSaved);
-      await expect(page.locator('main')).not.toContainText(mailbox.appPassword);
-      expect(await settingsPage.appPasswordShownWhenEditing(mailbox.userName), "'كلمة مرور التطبيق' should be empty when the mailbox is edited").toBe('');
-      await expect(card, `the saved mailbox should have the status '${mailboxStatus.receiving}'`).toContainText(mailboxStatus.receiving);
+      await expect(receiving).toContainText(messages.appPasswordSaved);
+      await expect(page.locator('main')).not.toContainText(typed.appPassword);
+      expect(await settingsPage.appPasswordShownWhenEditingCard(receiving), "'كلمة مرور التطبيق' should be empty when the mailbox is edited").toBe('');
+      expect(stopped, 'no setting should have been saved').toEqual([]);
+      blocked('saving a new mailbox and its connecting', "the portal's settings must not be changed (team decision 2026-11-17): the form was filled and cancelled, and the saved state was checked on the mailbox already configured");
     });
   });
 
@@ -326,39 +328,33 @@ test.describe('ACM-01 Login and System Settings', () => {
     And clicks 'حفظ' then 'إرسال بريد اختبار'
     Then the test email is received successfully
     #Arabic: التحقق من حفظ إعدادات SMTP وإرسال بريد اختبار
-  `), async ({ page, signIn, runId, adminApi, cleanup, settingsPage }) => {
-    // The SMTP settings are the whole portal's (shared with the team): they are saved back as they were after the case.
-    // 'كلمة المرور' is left empty ("اترك الحقل فارغًا للاحتفاظ بها"): the saved one is never answered by the server, so a
-    // password typed here could not be put back.
-    const smtp = {
-      host: 'smtp.example.com',
-      port: 587,
-      encryption: 'TLS',
-      senderEmail: autoEmail(runId, 'sender'),
-      senderName: autoName(runId, 'المرسل'),
-      user: `auto-test-smtp-${runId}`,
-      pass: '',
-    };
-    await given(async () => {
-      const original = await asSetup('keep the current SMTP settings', () => adminApi.dispatchSettings());
-      cleanup(() => adminApi.setDispatchSettings(original));
+  `), async ({ page, signIn, settingsPage }) => {
+    // Read-only (team decision 2026-11-17): the shared SMTP settings must not be changed - nothing is typed, saved or
+    // sent; the section's fields are checked as they are. Any settings save is stopped.
+    const stopped = await given(async () => {
       await signIn('ADMIN');
+      const guard = await settingsPage.blockSettingsWrites();
       await settingsPage.open();
+      return guard;
     });
-    const saved = await when(() => settingsPage.configureSmtp(smtp));
+    await when(() => expect(settingsPage.smtpEnabled, "'تفعيل الإرسال الخارجي'").toBeVisible());
     await then(async () => {
-      expect(saved, "'حفظ' should save the SMTP settings").toBeLessThan(300);
-      await settingsPage.open();
-      await expect(page.locator('#dispatch-host')).toHaveValue(smtp.host);
-      await expect(page.locator('#dispatch-fromAddress')).toHaveValue(smtp.senderEmail);
-      await expect(settingsPage.smtpEnabled).toBeChecked();
+      for (const [id, label] of [
+        ['#dispatch-host', 'خادم SMTP'],
+        ['#dispatch-port', 'المنفذ'],
+        ['#dispatch-security', 'وضع التشفير'],
+        ['#dispatch-fromAddress', 'عنوان المرسل'],
+        ['#dispatch-fromDisplayName', 'اسم المرسل'],
+        ['#dispatch-userName', 'مستخدم SMTP'],
+        ['#dispatch-password', 'كلمة المرور'],
+      ] as const) {
+        await expect(page.locator(id), `'${label}'`).toBeVisible();
+      }
       await expect(page.locator('#dispatch-password'), 'the password is never shown').toHaveValue('');
-    });
-    const sentTest = await when(() => settingsPage.sendSmtpTest(autoEmail(runId, 'smtp-test')));
-    await then(() => {
-      test.info().annotations.push({ type: 'server answer', description: `'إرسال بريد اختبار': ${sentTest.status} ${sentTest.message}` });
-      blocked('the test e-mail is received', `${NO_TEST_INBOX} (and smtp.example.com is not a real server)`);
-      return Promise.resolve();
+      await expect(settingsPage.smtpTestButton, "'إرسال بريد اختبار'").toBeVisible();
+      test.info().annotations.push({ type: 'smtp', description: `'تفعيل الإرسال الخارجي' is ${(await settingsPage.smtpEnabled.isChecked()) ? 'on' : 'off'}; 'إرسال بريد اختبار' is ${(await settingsPage.smtpTestButton.isEnabled()) ? 'enabled' : 'disabled'}` });
+      expect(stopped, 'no setting should have been saved').toEqual([]);
+      blocked('saving the SMTP settings and receiving the test e-mail', `the shared SMTP settings must not be changed (team decision 2026-11-17), and ${NO_TEST_INBOX}`);
     });
   });
 });
