@@ -218,7 +218,13 @@ test.describe('ACM-07 Official Correspondence', () => {
     await then(async () => {
       await registerPage.openRecord('Outbox', sent.documentId as number);
       for (const name of names) {
-        const [download] = await Promise.all([page.waitForEvent('download'), registerPage.details.getByText(name).first().click()]);
+        // Each attachment has 'عرض' (a preview - clicking its name opens it too) and 'تنزيل' (seen live 2026-11-17)
+        const item = registerPage.details
+          .locator('li, div')
+          .filter({ hasText: name })
+          .filter({ has: page.getByRole('button', { name: 'تنزيل', exact: true }) })
+          .last();
+        const [download] = await Promise.all([page.waitForEvent('download'), item.getByRole('button', { name: 'تنزيل', exact: true }).click()]);
         expect(download.suggestedFilename(), `${name} should download`).toContain(name.split('.').pop() as string);
       }
     });

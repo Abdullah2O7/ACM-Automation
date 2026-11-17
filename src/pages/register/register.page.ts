@@ -29,7 +29,8 @@ export class RegisterPage extends BasePage {
   readonly searchBox = this.page.getByPlaceholder('ابحث بالموضوع…');
   readonly bodySearchSwitch = this.page.getByRole('switch', { name: 'البحث في متن الرسالة أيضًا' });
   readonly bodySearchHint = this.page.getByText('يتطلب البحث في المتن ثلاثة أحرف على الأقل.');
-  readonly filterButton = this.page.getByRole('button', { name: 'تصفية', exact: true });
+  // Its name carries the number of active filters once one is set ('تصفية 1', seen live 2026-11-17)
+  readonly filterButton = this.page.getByRole('button', { name: /^\s*(\d+\s*)?تصفية(\s*\d+)?\s*$/ });
   readonly createLink = this.page.getByRole('link', { name: 'إنشاء', exact: true });
   readonly rows = this.page.locator('main tbody tr');
   readonly pageSize = this.page.getByRole('combobox', { name: 'عدد السجلات في الصفحة' });

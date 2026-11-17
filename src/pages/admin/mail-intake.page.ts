@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -42,7 +43,7 @@ export class MailIntakePage extends BasePage {
       this.page.waitForResponse((answer) => answer.url().includes('/api/acm/settings/mail-ingestion') && answer.request().method() === 'POST', { timeout: acmTimeouts.pageLoad }),
       this.syncNowButton.click(),
     ]);
-    return response.status();
+    return answerStatus(response);
   }
 
   /** The cards of the receiving mailboxes. */

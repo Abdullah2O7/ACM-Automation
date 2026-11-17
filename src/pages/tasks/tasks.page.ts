@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -51,9 +52,9 @@ export class TasksPage extends BasePage {
 
   /** Fills and saves the 'مهمة جديدة' dialog; returns the server's answer. Dates are يوم/شهر/سنة. */
   async createTask(task: { name: string; priority: string; assignee: string; start: string; due: string; reminder?: string; description?: string }): Promise<{ status: number }> {
-    // A dialog left open by a failed try would cover the button
-    if (await this.dialog.isVisible().catch(() => false)) {
-      await this.dialog.getByRole('button', { name: 'إلغاء', exact: true }).click();
+    // The dialog of the task just created may still be closing; one left open by a failed try would cover the button
+    if (!(await this.dialog.waitFor({ state: 'hidden', timeout: 5_000 }).then(() => true).catch(() => false))) {
+      await this.dialog.getByRole('button', { name: 'إلغاء', exact: true }).click({ timeout: 5_000 }).catch(() => undefined);
       await expect(this.dialog).toBeHidden();
     }
     await this.newTaskButton.click();
@@ -83,7 +84,11 @@ export class TasksPage extends BasePage {
       this.page.waitForResponse((answer) => /\/api\/acm\/tasks$/.test(new URL(answer.url()).pathname) && answer.request().method() === 'POST'),
       this.dialog.getByRole('button', { name: 'إنشاء', exact: true }).click(),
     ]);
-    return { status: response.status() };
+    const status = await answerStatus(response);
+    if (status < 300) {
+      await expect(this.dialog).toBeHidden();
+    }
+    return { status };
   }
 
   /** A task card (board) or row (list), by its name. */
@@ -168,7 +173,7 @@ export class TasksPage extends BasePage {
       this.page.waitForResponse((answer) => answer.url().includes('/api/acm/out-of-office') && answer.request().method() !== 'GET'),
       this.dialog.getByRole('button', { name: 'حفظ', exact: true }).click(),
     ]);
-    return { status: response.status() };
+    return { status: await answerStatus(response) };
   }
 
   waitForList(): Promise<unknown> {

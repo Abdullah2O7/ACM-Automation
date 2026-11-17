@@ -1,6 +1,7 @@
 import { expect, test } from '../../../src/fixtures/acm.fixture';
 import { given, scenario, then, when } from '../../../src/utils/core/scenario-test';
 import { createData } from '../../../src/utils/core/setup-step';
+import { answerStatus } from '../../../src/utils/core/answer-status';
 import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
 import { autoName } from '../../../src/domain/acm-names';
 import { AcmApi } from '../../../src/api/acm-api';
@@ -62,23 +63,37 @@ test.describe('ACM-15 Reports and Audit Log', () => {
     When the user generates each report ('معدل التشغيل', 'تتبّع مسار المستند', 'نشاط المستخدم', 'مؤشرات أداء المديرين')
     Then the report shows data consistent with the system records
     #Arabic: التحقق من صحة بيانات تقارير معدل التشغيل وتتبع المستند ونشاط المستخدم ومؤشرات المديرين
-  `), async ({ signIn, reportsPage }) => {
-    await given(async () => {
+  `), async ({ signIn, runId, adminApi, cleanup, reportsPage }) => {
+    const documentId = await given(async () => {
+      const id = await createData('register a record to trace', async () => {
+        const efa = await createFootballAssociation(adminApi, runId, cleanup);
+        cleanup(() => adminApi.purgeCorrespondenceMatching(runId));
+        return adminApi.sendCorrespondence({ subject: autoName(runId, 'مستند للتتبع'), directionId: directions.outgoing.id, typeId: documentTypes.letter.id, recipients: [efa] });
+      });
       await signIn('ADMIN');
       await reportsPage.open();
+      return id;
     });
-    for (const report of [reports.throughput, reports.documentTrail, reports.userActivity, reports.managerKpis]) {
+    for (const report of [reports.throughput, reports.documentTrail, reports.managerKpis]) {
       await when(async () => {
         await reportsPage.open();
         await reportsPage.chooseReport(report);
-        if (await reportsPage.from.isVisible().catch(() => false)) {
+        if (report === reports.documentTrail) {
+          await reportsPage.documentId.fill(String(documentId));
+        } else {
           await reportsPage.period(day(-30), day(0));
         }
         expect(await reportsPage.runPreview(), `'${report}' should be generated`).toBe(200);
       });
       await then(() => expect(reportsPage.preview, `the preview of '${report}'`).toBeVisible());
     }
-    test.info().annotations.push({ type: 'note', description: "Each report's own parameters (a document for 'تتبّع مسار المستند', a user for 'نشاط المستخدم') are left at their defaults; comparing the figures with the records is left to the reviewer." });
+    await when(async () => {
+      await reportsPage.open();
+      await reportsPage.chooseReport(reports.userActivity);
+      expect(await reportsPage.showActivity(), `'${reports.userActivity}' should be generated`).toBe(200);
+    });
+    await then(() => expect(reportsPage.activityResult, `the activity of '${reports.userActivity}'`).toBeVisible());
+    test.info().annotations.push({ type: 'note', description: "'تتبّع مسار المستند' traces a record registered for the case; 'نشاط المستخدم' shows the first user of its list. Comparing the figures with the records is left to the reviewer." });
   });
 
   test(...scenario('ACM-15-03', `
@@ -104,7 +119,8 @@ test.describe('ACM-15 Reports and Audit Log', () => {
         return reportsPage.runPreview();
       });
       await then(async () => {
-        await expect(page.locator('main').getByText(/مطلوب|يجب|لا يمكن|قبل|بعد|غير صالح/).filter({ hasNotText: 'اكتب التاريخ بترتيب' }).first(), `a message for ${what}`).toBeVisible();
+        // e.g. "تاريخ النهاية أسبق من تاريخ البداية." and "التاريخ أحدث من الحد المسموح به." (the date hint "اكتب التاريخ بترتيب ..." is not one)
+        await expect(page.locator('main').getByText(/مطلوب|يجب|لا يمكن|قبل|بعد|غير صالح|أسبق|أحدث|أقدم|المسموح/).filter({ hasNotText: 'اكتب التاريخ بترتيب' }).first(), `a message for ${what}`).toBeVisible();
         expect(sent === undefined || sent >= 400, `no report should be generated for ${what}`).toBe(true);
       });
     }
@@ -128,17 +144,19 @@ test.describe('ACM-15 Reports and Audit Log', () => {
       await mailIntakePage.addSummaryRecipient(user.email);
       return user;
     });
-    const before = await mailIntakePage.summarySection().innerText();
+    // The page does not show the last run: it is read from the settings the page loads
+    const before = await adminApi.dailySummaryLastRun();
     await when(async () => {
       const [response] = await Promise.all([
         page.waitForResponse((answer) => answer.url().includes('/api/acm/settings/daily-summary') && answer.request().method() === 'POST'),
         mailIntakePage.sendSummaryNowButton.click(),
       ]);
-      expect(response.status(), "'إرسال الآن' should run").toBeLessThan(300);
+      expect(await answerStatus(response), "'إرسال الآن' should run").toBeLessThan(300);
     });
     await then(async () => {
-      await mailIntakePage.open();
-      await expect.poll(() => mailIntakePage.summarySection().innerText(), { message: 'the last run status should be updated' }).not.toBe(before);
+      await expect
+        .poll(async () => JSON.stringify(await adminApi.dailySummaryLastRun()), { message: `the last run status should be updated (before: ${JSON.stringify(before)})`, timeout: 30_000 })
+        .not.toBe(JSON.stringify(before));
       const other = await asAnotherUser({ username: member.userName, password: member.password });
       await other.appShell.open('/tasks');
       const notifications = await other.appShell.openNotifications();

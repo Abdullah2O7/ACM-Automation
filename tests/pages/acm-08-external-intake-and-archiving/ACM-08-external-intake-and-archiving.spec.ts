@@ -2,12 +2,14 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '../../../src/fixtures/acm.fixture';
 import { given, scenario, then, when } from '../../../src/utils/core/scenario-test';
 import { createData } from '../../../src/utils/core/setup-step';
+import { answerStatus } from '../../../src/utils/core/answer-status';
 import { blocked, NO_TEST_INBOX } from '../../../src/utils/core/blocked-step';
 import { autoEmail, autoName } from '../../../src/domain/acm-names';
 import { AcmApi } from '../../../src/api/acm-api';
 import { createClub, useKeptArchive, createFootballAssociation, credentialsOfPerson } from '../../../src/fixtures/club';
 import type { RegisterPage } from '../../../src/pages/register/register.page';
 import type { ArchivingPage } from '../../../src/pages/archive/archiving.page';
+import { expectDoesNotSee, expectReceived } from '../../../src/fixtures/visibility';
 import { directions, documentTypes, referencePattern, registryName, subjects } from '../../../test-data/acm/acm.data';
 
 //========================================================================
@@ -70,10 +72,15 @@ const classify = async (page: Page, registerPage: RegisterPage, documentId: numb
     const escaped = entityName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     await page.getByRole('option').filter({ hasText: new RegExp(`^\\s*${escaped}`) }).first().click();
     await expect(dialog.getByRole('combobox', { name: 'شخص أو إدارة' })).toContainText(entityName);
-    await Promise.all([
-      page.waitForResponse((answer) => answer.url().includes('/api/acm/') && answer.request().method() !== 'GET', { timeout: 15_000 }).catch(() => undefined),
+    // POST /registry/incoming/{id}/route - a refusal comes back as HTTP 200 with the reason in the body
+    const [answer] = await Promise.all([
+      page.waitForResponse((reply) => /\/route$/.test(new URL(reply.url()).pathname) && reply.request().method() === 'POST', { timeout: 15_000 }).catch(() => undefined),
       dialog.getByRole('button', { name: 'توجيه داخلي', exact: true }).click(),
     ]);
+    if (answer) {
+      const reason = ((await answer.json().catch(() => ({}))) as { errorMessage?: string }).errorMessage ?? '';
+      expect(await answerStatus(answer), `'توجيه داخلي' to '${entityName}' should be accepted: ${reason}`).toBeLessThan(300);
+    }
     await expect(dialog).toBeHidden();
   }
   if (await registerPage.acceptToInboxButton.isVisible()) {
@@ -209,11 +216,11 @@ test.describe('ACM-08 External Intake and Archiving', () => {
         // offers for an e-mail fetched from the mailbox only
         blocked("directing it to 'إدارة الكرة' (and its persons seeing it)", `'توجيه داخلي' is offered only for an e-mail fetched from the mailbox - ${NO_TEST_INBOX}`);
       }
+      // A record directed to an entity reaches its persons in 'البريد الداخلي' (not in the register's 'الوارد')
       for (const name of ['كريم حسن', 'عمرو فتحي']) {
         const other = await asAnotherUser(credentialsOfPerson(club.person(name)));
-        await other.registerPage.openFolder('Inbox');
-        await other.registerPage.search(subject);
-        await expect(other.registerPage.row(subject), `visible to '${name}' of 'إدارة الكرة'`).toHaveCount(1);
+        await expectReceived(other, subject, `'${name}' of 'إدارة الكرة'`);
+        await other.close();
       }
     });
   });
@@ -250,7 +257,7 @@ test.describe('ACM-08 External Intake and Archiving', () => {
       if (answer) {
         test.info().annotations.push({ type: 'server answer', description: `${answer.status()} ${(await answer.text()).slice(0, 200)}` });
       }
-      expect(answer === undefined || answer.status() >= 400, "registering with no 'النوع' should be refused").toBe(true);
+      expect(answer === undefined || (await answerStatus(answer)) >= 400, "registering with no 'النوع' should be refused").toBe(true);
       await expect(page.locator('main').getByText(/مطلوب|اختر النوع|يجب/).first(), "a message for the missing 'النوع'").toBeVisible();
       expect(await adminApi.correspondenceIds('Triage', subject), "the record stays in 'غير مصنّف'").toContain(documentId);
     });
@@ -385,9 +392,13 @@ test.describe('ACM-08 External Intake and Archiving', () => {
       return archivingPage.save();
     });
     await then(async () => {
-      // The portal names the empty mandatory fields in one message: "لم تُدخل قيمة في: رقم خطاب الجهة، ..."
-      const missing = await archivingPage.missingFields();
-      expect([...missing].sort(), 'the message names the 5 mandatory fields').toEqual(Object.keys(mandatoryValues('', '', '', '')).sort());
+      // The portal names the empty mandatory fields in one message: "لم تُدخل قيمة في: رقم خطاب الجهة، ..." - unless the
+      // browser stops the save first on the empty mandatory date ("Please fill out this field." on that field only)
+      const { fields: missing, by } = await archivingPage.shownMissing();
+      test.info().annotations.push({ type: 'messages', description: `${by}: ${missing.join('، ') || '(none)'}` });
+      expect([...missing].sort(), `a message for each of the 5 mandatory fields (shown by the ${by}: ${missing.join('، ') || 'none'})`).toEqual(
+        Object.keys(mandatoryValues('', '', '', '')).sort(),
+      );
       for (const label of Object.keys(optionalValues)) {
         expect(missing, `no message for the optional '${label}'`).not.toContain(label);
       }
@@ -609,11 +620,13 @@ test.describe('ACM-08 External Intake and Archiving', () => {
     And the third email is visible to 'منى سعيد' only
     And the fourth email is visible to 'هشام رضا' only
     #Arabic: التحقق من توجيه أربع رسائل واردة للجهة الرئيسية وجهتين فرعيتين وشخص وظهور كل رسالة لأصحابها فقط
-  `), async ({ page, signIn, runId, adminApi, cleanup, registerPage }) => {
+  `), async ({ page, signIn, runId, adminApi, cleanup, registerPage, asAnotherUser }) => {
     const subjectsOf = ['للنادي الأهلي', 'لإدارة الكرة', 'لإدارة العضويات', 'لهشام رضا'].map((to) => autoName(runId, `بريد الاتحاد ${to}`));
     const { club, ids } = await given(async () => {
-      const prepared = await createData('create the club and four e-mails in غير مصنّف', async () => {
-        const madeClub = await createClub(adminApi, runId, cleanup);
+      // With users: 'توجيه داخلي' goes only to an active internal recipient (an entity or person with an active user) -
+      // the server answers "Choose an active internal recipient." otherwise (seen live 2026-11-17)
+      const prepared = await createData('create the club with users and four e-mails in غير مصنّف', async () => {
+        const madeClub = await createClub(adminApi, runId, cleanup, { withUsers: true });
         const efa = await createFootballAssociation(adminApi, runId, cleanup);
         purgeAfter(adminApi, runId, cleanup);
         const made: number[] = [];
@@ -641,6 +654,24 @@ test.describe('ACM-08 External Intake and Archiving', () => {
       }
       if (routed.some((done) => !done)) {
         blocked('directing the four e-mails and who sees each', `'توجيه داخلي' is offered only for an e-mail fetched from the mailbox - ${NO_TEST_INBOX}`);
+      }
+      // Who sees each e-mail: [the e-mail's index, the persons it is meant for]
+      const meantFor: string[][] = [
+        ['محمد عادل', 'كريم حسن', 'عمرو فتحي', 'منى سعيد', 'هشام رضا'],
+        ['كريم حسن', 'عمرو فتحي'],
+        ['منى سعيد'],
+        ['هشام رضا'],
+      ];
+      for (const name of ['محمد عادل', 'كريم حسن', 'عمرو فتحي', 'منى سعيد', 'هشام رضا']) {
+        const other = await asAnotherUser(credentialsOfPerson(club.person(name)));
+        for (const [index, id] of ids.entries()) {
+          if (meantFor[index].includes(name)) {
+            await expectReceived(other, subjectsOf[index], `'${name}'`);
+          } else {
+            await expectDoesNotSee(other, id, subjectsOf[index], `'${name}'`);
+          }
+        }
+        await other.close();
       }
     });
   });

@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { actionTimeout, acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -84,7 +85,8 @@ export class EntitiesPage extends BasePage {
       .waitForResponse((answer) => /\/api\/acm\/addressbook(\/\d+)?$/.test(new URL(answer.url()).pathname) && ['POST', 'PUT'].includes(answer.request().method()), { timeout: 5_000 })
       .catch(() => undefined);
     await this.dialog.getByRole('button', { name: /^(إنشاء|حفظ)$/ }).last().click();
-    return (await response)?.status();
+    const answer = await response;
+    return answer ? answerStatus(answer) : undefined;
   }
 
   /** The messages the open dialog shows (validation under its fields, or the server's refusal). */

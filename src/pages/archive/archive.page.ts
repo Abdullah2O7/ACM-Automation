@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -53,7 +54,8 @@ export class ArchivePage extends BasePage {
       .waitForResponse((answer) => /\/api\/acm\/cabinets$/.test(new URL(answer.url()).pathname) && answer.request().method() === 'POST', { timeout: 5_000 })
       .catch(() => undefined);
     await this.addButton.click();
-    return (await response)?.status();
+    const answer = await response;
+    return answer ? answerStatus(answer) : undefined;
   }
 
   /** A folder of the hierarchy, by its exact name (its button starts with the name, then its template and count). */

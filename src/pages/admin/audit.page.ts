@@ -48,7 +48,10 @@ export class AuditPage extends BasePage {
     }
   }
 
+  /** The list's reload; a filter set to the value it already has sends none, so not getting one is not an error. */
   waitForList(): Promise<unknown> {
-    return this.page.waitForResponse((answer) => answer.url().includes('/api/acm/') && /audit/i.test(answer.url()) && answer.request().method() === 'GET', { timeout: acmTimeouts.pageLoad });
+    return this.page
+      .waitForResponse((answer) => answer.url().includes('/api/acm/') && /audit/i.test(answer.url()) && answer.request().method() === 'GET', { timeout: 10_000 })
+      .catch(() => undefined);
   }
 }

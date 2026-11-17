@@ -82,7 +82,9 @@ test.describe('ACM-10 Internal Mail', () => {
     const draftSubject = autoName(runId, 'مسودة رسالة داخلية');
     const { user } = await given(async () => {
       const { member, colleague } = await createData('create the user and a colleague', async () => {
-        const created = await newUser();
+        // Deleting needs 'mailbox:delete': the 'مشغل' role has none (its selection offers only 'إلغاء التحديد'), so the
+        // user is given 'مدير التطبيق', the role template that has it
+        const created = await newUser({ role: 'admin' });
         const other = await newUser();
         cleanup(() => adminApi.purgeCorrespondenceMatching(runId));
         return { member: created, colleague: other };

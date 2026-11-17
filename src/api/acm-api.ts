@@ -292,6 +292,17 @@ export class AcmApi {
     return found.userRoleTemplateId;
   }
 
+  /** Creates a role template (POST /users/role-templates); returns its id. */
+  async createRoleTemplate(code: string, name: string, permissions: string[]): Promise<number> {
+    const created = await this.call<RoleTemplate>('POST', '/users/role-templates', { code, name: { ar: name, en: name }, description: code, permissions });
+    return created.userRoleTemplateId;
+  }
+
+  /** Gives a user the permissions of a role template, in place of the ones it has. */
+  applyRoleTemplate(appUserId: number, roleTemplateId: number): Promise<unknown> {
+    return this.call('POST', `/users/${appUserId}/access/apply-template`, { userRoleTemplateId: roleTemplateId, mode: 'Replace' });
+  }
+
   async deleteRoleTemplate(code: string): Promise<void> {
     const found = (await this.roleTemplates()).find((template) => template.code === code);
     if (found) {
@@ -489,7 +500,7 @@ export class AcmApi {
     // gone: search and purge again until nothing is left (a few rounds at most)
     for (let round = 0; round < 4; round += 1) {
       const ids = new Set<number>();
-      for (const folder of ['All', 'Triage', 'Draft', 'Spam', 'Deleted', 'MailboxInbox', 'MailboxOutbox', 'MailboxDeleted']) {
+      for (const folder of ['All', 'Register', 'Inbox', 'Outbox', 'Triage', 'Draft', 'Spam', 'Deleted', 'MailboxInbox', 'MailboxOutbox', 'MailboxDeleted']) {
         for (const id of await this.correspondenceIds(folder, keyword).catch(() => [] as number[])) {
           ids.add(id);
         }
@@ -603,6 +614,12 @@ export class AcmApi {
    * Removes a recipient of 'ملخص السجل اليومي' by its e-mail (a case's own). Best effort: the settings are read and
    * written back without it (GET / PUT /settings/daily-summary - the PUT is not yet seen sent by the portal).
    */
+  /** The last run of 'ملخص السجل اليومي' (GET /settings/daily-summary): the page itself does not show it. */
+  async dailySummaryLastRun(): Promise<{ state?: string; at?: string; detail?: string }> {
+    const settings = await this.call<{ lastRunState?: string; lastRunAtUtc?: string; lastRunDetail?: string }>('GET', '/settings/daily-summary');
+    return { state: settings.lastRunState, at: settings.lastRunAtUtc, detail: settings.lastRunDetail };
+  }
+
   async removeSummaryRecipient(email: string): Promise<void> {
     const settings = await this.call<{ recipients: Record<string, unknown>[] } & Record<string, unknown>>('GET', '/settings/daily-summary');
     const kept = settings.recipients.filter((recipient) => !Object.values(recipient).includes(email));

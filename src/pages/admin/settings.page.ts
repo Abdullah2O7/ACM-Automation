@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -95,7 +96,7 @@ export class SettingsPage extends BasePage {
         this.chooseLogo(identity.logo),
       ]);
     }
-    return response.status();
+    return answerStatus(response);
   }
 
   // 'البريد الخارجي (SMTP)' (seen live 2026-11-16): checkbox 'تفعيل الإرسال الخارجي', #dispatch-host, #dispatch-port,
@@ -135,7 +136,7 @@ export class SettingsPage extends BasePage {
       this.page.waitForResponse((answer) => answer.url().includes('/api/acm/settings/dispatch') && answer.request().method() === 'PUT'),
       this.smtpSaveButton().click(),
     ]);
-    return response.status();
+    return answerStatus(response);
   }
 
   /** 'إرسال بريد اختبار' to an address; returns the server's answer (status and message). */
@@ -146,6 +147,6 @@ export class SettingsPage extends BasePage {
       this.smtpTestButton.click(),
     ]);
     const body = (await response.json().catch(() => ({}))) as { errorMessage?: string };
-    return { status: response.status(), message: body.errorMessage ?? '' };
+    return { status: await answerStatus(response), message: body.errorMessage ?? '' };
   }
 }

@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -104,10 +105,31 @@ export class ArchivingPage extends BasePage {
     if (outcome === 'refused' || outcome === undefined) {
       return undefined;
     }
-    if (outcome.ok()) {
+    const status = await answerStatus(outcome);
+    if (status < 300) {
       await expect(this.dialog).toBeHidden();
     }
-    return outcome.status();
+    return status;
+  }
+
+  /**
+   * The fields the user is told are missing: the names "لم تُدخل قيمة في: ..." lists or, when the browser stopped the
+   * save first (seen live 2026-11-17: an empty mandatory date is a required input, so Chrome shows its own "Please fill
+   * out this field." on it and the portal's message never comes), the one field that browser message points at.
+   */
+  async shownMissing(): Promise<{ fields: string[]; by: 'portal' | 'browser' | 'none' }> {
+    if (await this.missingValues.waitFor({ timeout: 5_000 }).then(() => true).catch(() => false)) {
+      return { fields: await this.missingFields(), by: 'portal' };
+    }
+    const first = await this.dialog.locator('input:invalid, textarea:invalid, select:invalid').evaluateAll((inputs) => {
+      const input = inputs[0];
+      if (!input) {
+        return '';
+      }
+      const label = (input.id && document.querySelector(`label[for="${input.id}"]`)?.textContent) || input.getAttribute('aria-label') || '';
+      return label.replace(/\*/g, '').replace(/مطلوب/g, '').trim();
+    });
+    return first ? { fields: [first], by: 'browser' } : { fields: [], by: 'none' };
   }
 
   /** The names "لم تُدخل قيمة في: ..." lists. */

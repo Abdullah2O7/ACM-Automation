@@ -1,6 +1,7 @@
 import { expect, test } from '../../../src/fixtures/acm.fixture';
 import { given, scenario, then, when } from '../../../src/utils/core/scenario-test';
 import { asSetup } from '../../../src/utils/core/setup-step';
+import { answerStatus } from '../../../src/utils/core/answer-status';
 import { autoName } from '../../../src/domain/acm-names';
 import type { IndexField } from '../../../src/pages/archive/templates.page';
 import { archive } from '../../../test-data/acm/acm.data';
@@ -181,8 +182,9 @@ test.describe('ACM-04 Archive Templates', () => {
       return response;
     });
     await then(async () => {
-      expect(saved === undefined || saved.status() >= 400, 'a field with no name should not be saved').toBe(true);
-      await expect(page.locator('main').getByText(/مطلوب|أدخل|اسم/).first(), 'a message for the incomplete field').toBeVisible();
+      expect(saved === undefined || (await answerStatus(saved)) >= 400, 'a field with no name should not be saved').toBe(true);
+      // e.g. under 'التسمية': "رفض الخادم هذه القيمة. راجعها ثم أعد الإرسال." (seen live 2026-11-17)
+      await expect(page.locator('main').getByText(/مطلوب|أدخل|اسم|رفض|راجعها/).first(), 'a message for the incomplete field').toBeVisible();
       await templatesPage.open();
       await expect(templatesPage.templateCard(templateName), 'the template keeps no field').toContainText(/لا حقول فهرسة/);
       test.info().annotations.push({ type: 'note', description: "'إنشاء' of 'قالب جديد' creates the template before its fields: 'no template is added' is checked as 'no incomplete field is saved' (the template has no field)." });

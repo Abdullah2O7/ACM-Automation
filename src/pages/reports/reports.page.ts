@@ -43,11 +43,33 @@ export class ReportsPage extends BasePage {
     await this.to.fill(to);
   }
 
-  /** Clicks 'معاينة'; returns the report request's status, or undefined when nothing was sent. */
+  /** Clicks 'معاينة'; returns the report request's status, or undefined when nothing was sent (the form keeps 'معاينة' disabled while its parameters are invalid). */
   async runPreview(): Promise<number | undefined> {
     // GET /api/acm/reports/<report>/export?Format=Pdf&From=..&To=.. - none is sent when the form refuses the parameters
+    if (await this.previewButton.isDisabled()) {
+      return undefined;
+    }
     const response = this.page.waitForResponse((answer) => answer.url().includes('/api/acm/reports'), { timeout: 15_000 }).catch(() => undefined);
     await this.previewButton.click();
+    return (await response)?.status();
+  }
+
+  // 'تتبّع مسار المستند': 'رقم المستند' - the record's id ("رقم قيد المستند"); 'معاينة' stays disabled until it is given
+  readonly documentId = this.page.locator('#report-document-id');
+
+  // 'نشاط المستخدم' has its own form (seen live 2026-11-17): 'المستخدم' (#activity-user, a searchable list), 'نوع الإجراء',
+  // 'صيغة الإخراج' (default إكسل), the period, and 'عرض النشاط', which lists the actions in the page under
+  // "النشاط المسجّل للمستخدم <name>" (GET /api/acm/reports/user-activity?UserName=..).
+  readonly activityUser = this.page.locator('#activity-user');
+  readonly activityResult = this.page.getByText(/النشاط المسجّل للمستخدم/).first();
+
+  /** Picks the user (the first one when none is named) and clicks 'عرض النشاط'; returns the answer's status. */
+  async showActivity(user?: string): Promise<number | undefined> {
+    await this.activityUser.click();
+    const option = user ? this.page.getByRole('option').filter({ hasText: user }) : this.page.getByRole('option');
+    await option.first().click();
+    const response = this.page.waitForResponse((answer) => answer.url().includes('/api/acm/reports/user-activity'), { timeout: 15_000 }).catch(() => undefined);
+    await this.page.getByRole('button', { name: 'عرض النشاط', exact: true }).click();
     return (await response)?.status();
   }
 

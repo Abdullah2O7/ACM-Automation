@@ -9,7 +9,7 @@ import { autoEmail, autoName } from '../../../src/domain/acm-names';
 import { AcmApi } from '../../../src/api/acm-api';
 import { createClub, createFootballAssociation, credentialsOfPerson } from '../../../src/fixtures/club';
 import { writeTestFile } from '../../../src/utils/core/test-files';
-import { directions, documentTypes, referencePattern, registryName, subjects } from '../../../test-data/acm/acm.data';
+import { directions, documentTypes, referencePattern, registryName, roles, subjects } from '../../../test-data/acm/acm.data';
 
 //========================================================================
 // ACM-11 - Registry External Sending
@@ -36,14 +36,23 @@ const requestToRegistry = async (adminApi: AcmApi, karim: { username: string; pa
 };
 
 /**
- * The Registry opens the pending request and starts registering it as outgoing e-mail. NOT YET SEEN: the action that
- * turns a request into a register record; the record offers 'إرسال بالبريد' (seen on register records), tried first.
+ * Seen live (2026-11-17): a request sent to 'السجل / Registry' reaches the Registry's 'البريد الداخلي' only, and offers
+ * there 'رد', 'رد على الجميع', 'إعادة إرسال', 'حذف' and 'مهمة جديدة' - no action registers it as an outgoing record.
+ * 'بانتظار التسجيل' (?folder=Register) holds intake e-mails and outgoing records not yet sent ('إرسال بالبريد').
  */
+const NO_REGISTER_ACTION =
+  "the portal offers no action to register an internal request: the request sent to 'السجل / Registry' reaches the Registry's 'البريد الداخلي' only, with 'رد', 'رد على الجميع', 'إعادة إرسال', 'حذف' (seen live 2026-11-17) - the Registry flow is to be confirmed with the team";
+const registerAction = (page: Page) => page.locator('main').getByRole('button', { name: /^(تسجيل|قيد|تسجيل كصادر|تسجيل وإرسال)$/ }).first();
+
+/** The Registry opens the pending request and starts registering it as outgoing e-mail (BLOCKED while no action exists). */
 const startRegistering = async (page: Page, mailboxPage: MailboxPage, correspondenceForm: CorrespondenceFormPage, subject: string): Promise<void> => {
   await mailboxPage.open();
   await mailboxPage.search(subject);
   await mailboxPage.openMessage(subject);
-  await page.locator('main').getByRole('button', { name: /^(تسجيل|قيد|إرسال بالبريد|تسجيل كصادر)$/ }).first().click();
+  if (!(await registerAction(page).waitFor({ timeout: 5_000 }).then(() => true).catch(() => false))) {
+    blocked('the Registry registers the request as outgoing', NO_REGISTER_ACTION);
+  }
+  await registerAction(page).click();
   await correspondenceForm.chooseDirection(directions.outgoing.label);
   await correspondenceForm.chooseType(documentTypes.email.label);
 };
@@ -98,7 +107,7 @@ test.describe('ACM-11 Registry External Sending', () => {
     Then it gets a reference number in format YYYY/N/O with status 'تم الإرسال الخارجي'
     And the external entity receives the email with the same subject, body and 'قائمة_اللاعبين_المعتمدة.pdf' opening correctly
     #Arabic: التحقق من إرسال السجل البريد الخارجي للاتحاد ووصوله فعلياً بالمرفق سليم
-  `), async ({ page, signIn, runId, adminApi, cleanup, registerPage, correspondenceForm }) => {
+  `), async ({ page, signIn, runId, adminApi, cleanup, registerPage, mailboxPage, correspondenceForm }) => {
     const subject = autoName(runId, subjects.registryReply);
     const { documentId, efa } = await given(async () => {
       const prepared = await createData("create the request pending at the Registry, from كريم حسن", async () => {
@@ -115,18 +124,10 @@ test.describe('ACM-11 Registry External Sending', () => {
         }
       });
       await signIn('ADMIN');
-      await registerPage.openRecord('Register', prepared.documentId);
       return prepared;
     });
     const sent = await when(async () => {
-      // NOT YET SEEN: how a pending request is registered. Expected: the record gives the form back to complete
-      // ('الاتجاه', 'النوع', the party) and send.
-      const register = page.getByRole('button', { name: /^(تسجيل|قيد|تسجيل وإرسال)$/ }).first();
-      if (await register.isVisible().catch(() => false)) {
-        await register.click();
-      }
-      await correspondenceForm.chooseDirection(directions.outgoing.label);
-      await correspondenceForm.chooseType(documentTypes.email.label);
+      await startRegistering(page, mailboxPage, correspondenceForm, subject);
       await correspondenceForm.pickRecipient(efa.name);
       return correspondenceForm.send();
     });
@@ -154,6 +155,13 @@ test.describe('ACM-11 Registry External Sending', () => {
         const club = await createClub(adminApi, runId, cleanup, { withUsers: true });
         const association = await createFootballAssociation(adminApi, runId, cleanup);
         cleanup(() => adminApi.purgeCorrespondenceMatching(runId));
+        // "has no admin permissions": every role template that can write mail ('مشغل' too) also has the Registry's
+        // 'correspondence:registry' and 'correspondence:dispatch', so كريم حسن gets 'مشغل' without those two
+        const operator = (await adminApi.roleTemplates()).find((template) => template.code === roles.operator.code);
+        const code = autoName(runId, 'department-employee');
+        const employee = await adminApi.createRoleTemplate(code, code, (operator?.permissions ?? []).filter((permission) => !['correspondence:registry', 'correspondence:dispatch'].includes(permission)));
+        cleanup(() => adminApi.deleteRoleTemplate(code));
+        await adminApi.applyRoleTemplate(club.person('كريم حسن').appUserId as number, employee);
         return { club, association };
       });
       return { karim: await asAnotherUser(credentialsOfPerson(prepared.club.person('كريم حسن'))), efa: prepared.association };

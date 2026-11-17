@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -149,7 +150,7 @@ export class UsersPage extends BasePage {
       this.createButton.click(),
     ]);
     const body = (await response.json().catch(() => ({}))) as { value?: { temporaryPassword?: string } };
-    return { status: response.status(), temporaryPassword: body.value?.temporaryPassword };
+    return { status: await answerStatus(response), temporaryPassword: body.value?.temporaryPassword };
   }
 
   /**

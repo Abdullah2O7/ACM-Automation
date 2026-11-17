@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { BasePage } from '../base.page';
+import { answerStatus } from '../../utils/core/answer-status';
 import { acmTimeouts } from '../../config/timeouts';
 
 /**
@@ -111,7 +112,8 @@ export class CorrespondenceFormPage extends BasePage {
       .waitForResponse((answer) => /\/api\/acm\/addressbook/.test(answer.url()) && answer.request().method() === 'POST', { timeout: 5_000 })
       .catch(() => undefined);
     await this.newEntityDialog.getByRole('button', { name: 'إضافة واختيار', exact: true }).click();
-    return (await response)?.status();
+    const answer = await response;
+    return answer ? answerStatus(answer) : undefined;
   }
 
   async fillBody(text: string): Promise<void> {
@@ -185,12 +187,13 @@ export class CorrespondenceFormPage extends BasePage {
     ]);
     const body = (await response.json().catch(() => ({}))) as { value?: number; errorMessage?: string };
     const documentId = typeof body.value === 'number' ? body.value : undefined;
-    if (sent && response.ok()) {
+    const status = await answerStatus(response);
+    if (sent && status < 300) {
       const final = await sent;
       const finalBody = (await final.json().catch(() => ({}))) as { errorMessage?: string };
-      return { status: final.status(), documentId, error: finalBody.errorMessage };
+      return { status: await answerStatus(final), documentId, error: finalBody.errorMessage };
     }
-    return { status: response.status(), documentId, error: body.errorMessage };
+    return { status, documentId, error: body.errorMessage };
   }
 
   /** Clicks 'إرسال' on an empty form: nothing is sent (no request), the form shows its messages. */
